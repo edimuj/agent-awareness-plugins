@@ -1,0 +1,12 @@
+{
+  "name": "agent-awareness-plugin-server-health",
+  "version": "0.1.0",
+  "description": "Server health alerts for agent-awareness — threshold-based with hysteresis and cooldown",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "keywords": ["agent-awareness", "plugin", "server", "health", "monitoring"],
+  "license": "MIT"
+}

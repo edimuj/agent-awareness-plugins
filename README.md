@@ -9,6 +9,7 @@ Each subdirectory is a standalone plugin that can be symlinked into `~/.config/a
 | Plugin | Description |
 |--------|-------------|
 | [github-watcher](./github-watcher/) | Monitors GitHub repos for new issues, PRs, and comments |
+| [server-health](./server-health/) | Threshold-based server alerts with hysteresis and cooldown |
 
 ## Installation
 
