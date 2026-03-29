@@ -1,0 +1,12 @@
+{
+  "name": "agent-awareness-plugin-github-watcher",
+  "version": "0.1.0",
+  "description": "GitHub repo watcher for agent-awareness — monitors issues, PRs, and comments",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "keywords": ["agent-awareness", "plugin", "github", "watcher"],
+  "license": "MIT"
+}

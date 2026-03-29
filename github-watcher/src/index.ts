@@ -1,0 +1,522 @@
+/**
+ * github-watcher — agent-awareness provider plugin
+ *
+ * Monitors GitHub repos for new issues, PRs, and comments from external users.
+ * Uses `gh` CLI for auth-free access. State-tracked: only reports deltas.
+ */
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import type {
+  AwarenessPlugin,
+  GatherContext,
+  GatherResult,
+  PluginConfig,
+  Trigger,
+} from 'agent-awareness/src/core/types.ts';
+
+const exec = promisify(execFile);
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+interface RepoState {
+  lastIssueId: number;
+  lastPrId: number;
+  /** ISO timestamp of last seen comment across all issues/PRs */
+  lastCommentAt: string;
+  /** ISO timestamp of last seen issue event */
+  lastIssueAt: string;
+  /** ISO timestamp of last seen PR event */
+  lastPrAt: string;
+}
+
+interface WatcherState {
+  repos: Record<string, RepoState>;
+  lastCheck: string;
+}
+
+interface GHItem {
+  number: number;
+  title: string;
+  author: { login: string };
+  createdAt: string;
+  url: string;
+  state?: string;
+  isDraft?: boolean;
+}
+
+interface GHComment {
+  author: { login: string };
+  body: string;
+  createdAt: string;
+  url: string;
+  // Added by our processing
+  issueNumber?: number;
+  issueTitle?: string;
+}
+
+interface RepoActivity {
+  repo: string;
+  newIssues: GHItem[];
+  newPRs: GHItem[];
+  newComments: GHComment[];
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+async function gh(args: string[], signal?: AbortSignal): Promise<string> {
+  try {
+    const { stdout } = await exec('gh', args, {
+      timeout: 15_000,
+      signal,
+      env: { ...process.env, GH_PAGER: '' },
+    });
+    return stdout.trim();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('ABORT_ERR') || msg.includes('aborted')) throw err;
+    return '';
+  }
+}
+
+async function fetchNewIssues(
+  repo: string,
+  since: string,
+  ignoreUser: string,
+  signal?: AbortSignal,
+): Promise<GHItem[]> {
+  const json = await gh([
+    'issue', 'list',
+    '-R', repo,
+    '--json', 'number,title,author,createdAt,url,state',
+    '--limit', '20',
+    '-s', 'all',
+  ], signal);
+  if (!json) return [];
+  try {
+    const items: GHItem[] = JSON.parse(json);
+    return items.filter(
+      (i) => i.author.login.toLowerCase() !== ignoreUser.toLowerCase()
+        && i.createdAt > since,
+    );
+  } catch { return []; }
+}
+
+async function fetchNewPRs(
+  repo: string,
+  since: string,
+  ignoreUser: string,
+  signal?: AbortSignal,
+): Promise<GHItem[]> {
+  const json = await gh([
+    'pr', 'list',
+    '-R', repo,
+    '--json', 'number,title,author,createdAt,url,state,isDraft',
+    '--limit', '20',
+    '-s', 'all',
+  ], signal);
+  if (!json) return [];
+  try {
+    const items: GHItem[] = JSON.parse(json);
+    return items.filter(
+      (i) => i.author.login.toLowerCase() !== ignoreUser.toLowerCase()
+        && i.createdAt > since,
+    );
+  } catch { return []; }
+}
+
+async function fetchRecentComments(
+  repo: string,
+  since: string,
+  ignoreUser: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<GHComment[]> {
+  // Use GraphQL for efficient comment fetching across all issues/PRs
+  const query = `
+    query($repo: String!, $owner: String!) {
+      repository(owner: $owner, name: $repo) {
+        issueComments: issues(last: 10, orderBy: {field: UPDATED_AT, direction: DESC}) {
+          nodes {
+            number
+            title
+            comments(last: 5) {
+              nodes {
+                author { login }
+                body
+                createdAt
+                url
+              }
+            }
+          }
+        }
+        prComments: pullRequests(last: 10, orderBy: {field: UPDATED_AT, direction: DESC}) {
+          nodes {
+            number
+            title
+            comments(last: 5) {
+              nodes {
+                author { login }
+                body
+                createdAt
+                url
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const [owner, name] = repo.split('/');
+  if (!owner || !name) return [];
+
+  const json = await gh([
+    'api', 'graphql',
+    '-f', `query=${query}`,
+    '-f', `owner=${owner}`,
+    '-f', `repo=${name}`,
+  ], signal);
+
+  if (!json) return [];
+
+  try {
+    const data = JSON.parse(json);
+    const comments: GHComment[] = [];
+    const repoData = data.data?.repository;
+    if (!repoData) return [];
+
+    for (const source of ['issueComments', 'prComments'] as const) {
+      for (const item of repoData[source]?.nodes ?? []) {
+        for (const comment of item.comments?.nodes ?? []) {
+          if (
+            comment.author?.login?.toLowerCase() !== ignoreUser.toLowerCase()
+            && comment.createdAt > since
+          ) {
+            comments.push({
+              ...comment,
+              issueNumber: item.number,
+              issueTitle: item.title,
+            });
+          }
+        }
+      }
+    }
+
+    return comments
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  } catch { return []; }
+}
+
+async function fetchRepoActivity(
+  repo: string,
+  repoState: RepoState,
+  ignoreUser: string,
+  commentLimit: number,
+  signal?: AbortSignal,
+): Promise<RepoActivity> {
+  const [newIssues, newPRs, newComments] = await Promise.all([
+    fetchNewIssues(repo, repoState.lastIssueAt, ignoreUser, signal),
+    fetchNewPRs(repo, repoState.lastPrAt, ignoreUser, signal),
+    fetchRecentComments(repo, repoState.lastCommentAt, ignoreUser, commentLimit, signal),
+  ]);
+
+  return { repo, newIssues, newPRs, newComments };
+}
+
+function defaultRepoState(): RepoState {
+  const now = new Date().toISOString();
+  return {
+    lastIssueId: 0,
+    lastPrId: 0,
+    lastCommentAt: now,
+    lastIssueAt: now,
+    lastPrAt: now,
+  };
+}
+
+function updateRepoState(prev: RepoState, activity: RepoActivity): RepoState {
+  const state = { ...prev };
+
+  if (activity.newIssues.length > 0) {
+    const latest = activity.newIssues.reduce(
+      (max, i) => (i.createdAt > max ? i.createdAt : max),
+      state.lastIssueAt,
+    );
+    state.lastIssueAt = latest;
+    state.lastIssueId = Math.max(state.lastIssueId, ...activity.newIssues.map((i) => i.number));
+  }
+
+  if (activity.newPRs.length > 0) {
+    const latest = activity.newPRs.reduce(
+      (max, i) => (i.createdAt > max ? i.createdAt : max),
+      state.lastPrAt,
+    );
+    state.lastPrAt = latest;
+    state.lastPrId = Math.max(state.lastPrId, ...activity.newPRs.map((i) => i.number));
+  }
+
+  if (activity.newComments.length > 0) {
+    const latest = activity.newComments.reduce(
+      (max, c) => (c.createdAt > max ? c.createdAt : max),
+      state.lastCommentAt,
+    );
+    state.lastCommentAt = latest;
+  }
+
+  return state;
+}
+
+// ── Formatters ─────────────────────────────────────────────────────────────
+
+function formatCompact(activities: RepoActivity[]): string {
+  const parts: string[] = [];
+
+  for (const a of activities) {
+    const counts: string[] = [];
+    if (a.newIssues.length) counts.push(`${a.newIssues.length} new issue${a.newIssues.length > 1 ? 's' : ''}`);
+    if (a.newPRs.length) counts.push(`${a.newPRs.length} new PR${a.newPRs.length > 1 ? 's' : ''}`);
+    if (a.newComments.length) counts.push(`${a.newComments.length} new comment${a.newComments.length > 1 ? 's' : ''}`);
+    if (counts.length > 0) {
+      parts.push(`${a.repo}: ${counts.join(', ')}`);
+    }
+  }
+
+  return parts.length > 0
+    ? `GitHub: ${parts.join(' | ')}`
+    : '';
+}
+
+function formatDetailed(activities: RepoActivity[]): string {
+  const sections: string[] = [];
+
+  for (const a of activities) {
+    const hasActivity = a.newIssues.length || a.newPRs.length || a.newComments.length;
+    if (!hasActivity) continue;
+
+    const lines: string[] = [`**${a.repo}**`];
+
+    for (const issue of a.newIssues) {
+      lines.push(`  📋 #${issue.number} ${issue.title} (by @${issue.author.login})`);
+    }
+
+    for (const pr of a.newPRs) {
+      const draft = pr.isDraft ? ' [draft]' : '';
+      lines.push(`  🔀 #${pr.number} ${pr.title} (by @${pr.author.login})${draft}`);
+    }
+
+    for (const comment of a.newComments) {
+      const preview = comment.body.slice(0, 80).replace(/\n/g, ' ');
+      lines.push(`  💬 #${comment.issueNumber} @${comment.author.login}: ${preview}${comment.body.length > 80 ? '…' : ''}`);
+    }
+
+    sections.push(lines.join('\n'));
+  }
+
+  return sections.length > 0
+    ? `GitHub activity:\n${sections.join('\n')}`
+    : '';
+}
+
+// ── Plugin ─────────────────────────────────────────────────────────────────
+
+export default {
+  name: 'github-watcher',
+  description: 'Monitors GitHub repos for new issues, PRs, and comments from external users',
+
+  triggers: ['session-start', 'interval:15m'],
+
+  defaults: {
+    enabled: true,
+    /** GitHub repos to watch — array of 'owner/repo' strings */
+    repos: [],
+    /** GitHub username to ignore (your own activity) */
+    ignoreUser: 'edimuj',
+    /** Max comments to fetch per repo per check */
+    commentLimit: 10,
+    /** Output format: 'compact' for interval, 'detailed' for session-start */
+    format: 'auto',
+    /** Only inject when there's new activity (true = silent when nothing new) */
+    onlyWhenNew: true,
+    triggers: {
+      'session-start': 'detailed',
+      'interval:15m': 'compact',
+    },
+  },
+
+  async gather(
+    trigger: Trigger,
+    config: PluginConfig,
+    prevState: Record<string, unknown> | null,
+    _context: GatherContext,
+  ): Promise<GatherResult | null> {
+    const repos = config.repos as string[];
+    if (!repos || repos.length === 0) return null;
+
+    const ignoreUser = (config.ignoreUser as string) ?? 'edimuj';
+    const commentLimit = (config.commentLimit as number) ?? 10;
+    const onlyWhenNew = config.onlyWhenNew !== false;
+
+    // Restore state
+    const state: WatcherState = (prevState as WatcherState | null) ?? {
+      repos: {},
+      lastCheck: new Date().toISOString(),
+    };
+
+    // Initialize state for new repos
+    for (const repo of repos) {
+      if (!state.repos[repo]) {
+        state.repos[repo] = defaultRepoState();
+      }
+    }
+
+    // Fetch activity for all repos in parallel
+    const activities = await Promise.all(
+      repos.map((repo) =>
+        fetchRepoActivity(repo, state.repos[repo]!, ignoreUser, commentLimit)
+          .catch((): RepoActivity => ({ repo, newIssues: [], newPRs: [], newComments: [] })),
+      ),
+    );
+
+    // Update state with what we've seen
+    const newState: WatcherState = {
+      repos: { ...state.repos },
+      lastCheck: new Date().toISOString(),
+    };
+    for (const activity of activities) {
+      newState.repos[activity.repo] = updateRepoState(
+        state.repos[activity.repo]!,
+        activity,
+      );
+    }
+
+    // Determine format
+    const triggerFormat = config.triggers?.[trigger as string];
+    const format = typeof triggerFormat === 'string'
+      ? triggerFormat
+      : (config.format as string) ?? 'auto';
+
+    const useDetailed = format === 'detailed'
+      || (format === 'auto' && trigger === 'session-start');
+
+    const text = useDetailed
+      ? formatDetailed(activities)
+      : formatCompact(activities);
+
+    // If onlyWhenNew and nothing to report, still update state silently
+    if (onlyWhenNew && !text) {
+      return { text: '', state: newState as unknown as Record<string, unknown> };
+    }
+
+    return {
+      text: text || 'GitHub: no new external activity',
+      state: newState as unknown as Record<string, unknown>,
+    };
+  },
+
+  mcp: {
+    tools: [
+      {
+        name: 'check',
+        description: 'Check GitHub repos for new activity right now. Returns detailed output regardless of interval.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            repo: {
+              type: 'string',
+              description: 'Specific repo to check (owner/repo). Omit to check all watched repos.',
+            },
+            since: {
+              type: 'string',
+              description: 'ISO timestamp to check from. Omit to use last known state.',
+            },
+          },
+        },
+        async handler(
+          params: Record<string, unknown>,
+          config: PluginConfig,
+          signal: AbortSignal,
+          prevState: Record<string, unknown> | null,
+        ): Promise<GatherResult | null> {
+          const allRepos = config.repos as string[];
+          const repos = params.repo ? [params.repo as string] : allRepos;
+          if (!repos.length) return { text: 'No repos configured' };
+
+          const ignoreUser = (config.ignoreUser as string) ?? 'edimuj';
+          const commentLimit = (config.commentLimit as number) ?? 10;
+
+          const state = (prevState as WatcherState | null) ?? {
+            repos: {},
+            lastCheck: new Date().toISOString(),
+          };
+
+          // If specific since was given, create temp state with that timestamp
+          const checkState = { ...state };
+          if (params.since) {
+            for (const repo of repos) {
+              checkState.repos[repo] = {
+                lastIssueId: 0,
+                lastPrId: 0,
+                lastCommentAt: params.since as string,
+                lastIssueAt: params.since as string,
+                lastPrAt: params.since as string,
+              };
+            }
+          }
+
+          for (const repo of repos) {
+            if (!checkState.repos[repo]) {
+              checkState.repos[repo] = defaultRepoState();
+            }
+          }
+
+          const activities = await Promise.all(
+            repos.map((repo) =>
+              fetchRepoActivity(repo, checkState.repos[repo]!, ignoreUser, commentLimit, signal)
+                .catch((): RepoActivity => ({ repo, newIssues: [], newPRs: [], newComments: [] })),
+            ),
+          );
+
+          // Update state
+          const newState: WatcherState = {
+            repos: { ...state.repos },
+            lastCheck: new Date().toISOString(),
+          };
+          for (const activity of activities) {
+            newState.repos[activity.repo] = updateRepoState(
+              state.repos[activity.repo] ?? defaultRepoState(),
+              activity,
+            );
+          }
+
+          const text = formatDetailed(activities) || 'No new external activity';
+          return { text, state: newState as unknown as Record<string, unknown> };
+        },
+      },
+      {
+        name: 'repos',
+        description: 'List currently watched repos and their last-check timestamps',
+        inputSchema: { type: 'object' as const },
+        async handler(
+          _params: Record<string, unknown>,
+          config: PluginConfig,
+          _signal: AbortSignal,
+          prevState: Record<string, unknown> | null,
+        ): Promise<GatherResult | null> {
+          const repos = config.repos as string[];
+          if (!repos.length) return { text: 'No repos configured' };
+
+          const state = (prevState as WatcherState | null) ?? { repos: {}, lastCheck: 'never' };
+          const lines = repos.map((repo) => {
+            const rs = state.repos[repo];
+            return rs
+              ? `${repo} — last checked: ${state.lastCheck}`
+              : `${repo} — not yet checked`;
+          });
+
+          return { text: `Watched repos:\n${lines.join('\n')}` };
+        },
+      },
+    ],
+  },
+} satisfies AwarenessPlugin;

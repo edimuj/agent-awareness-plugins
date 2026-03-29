@@ -1,0 +1,7 @@
+{
+  "name": "agent-awareness-plugins",
+  "version": "0.1.0",
+  "description": "Community provider plugins for agent-awareness",
+  "private": true,
+  "license": "MIT"
+}
