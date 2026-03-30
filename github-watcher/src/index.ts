@@ -12,7 +12,7 @@ import type {
   GatherResult,
   PluginConfig,
   Trigger,
-} from 'agent-awareness/src/core/types.ts';
+} from 'agent-awareness';
 
 const exec = promisify(execFile);
 
@@ -29,7 +29,7 @@ interface RepoState {
   lastPrAt: string;
 }
 
-interface WatcherState {
+interface WatcherState extends Record<string, unknown> {
   repos: Record<string, RepoState>;
   lastCheck: string;
 }
@@ -61,9 +61,15 @@ interface RepoActivity {
   newComments: GHComment[];
 }
 
+type Log = NonNullable<GatherContext['log']>;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-async function gh(args: string[], signal?: AbortSignal): Promise<string> {
+function makeLog(ctx?: { log?: Log }): Log {
+  return ctx?.log ?? { warn: console.error, error: console.error };
+}
+
+async function gh(args: string[], log: Log, signal?: AbortSignal): Promise<string> {
   try {
     const { stdout } = await exec('gh', args, {
       timeout: 15_000,
@@ -74,6 +80,7 @@ async function gh(args: string[], signal?: AbortSignal): Promise<string> {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('ABORT_ERR') || msg.includes('aborted')) throw err;
+    log.warn(`gh ${args[0]} failed: ${msg}`);
     return '';
   }
 }
@@ -81,7 +88,8 @@ async function gh(args: string[], signal?: AbortSignal): Promise<string> {
 async function fetchNewIssues(
   repo: string,
   since: string,
-  ignoreUser: string,
+  ignoreAuthors: Set<string>,
+  log: Log,
   signal?: AbortSignal,
 ): Promise<GHItem[]> {
   const json = await gh([
@@ -90,12 +98,12 @@ async function fetchNewIssues(
     '--json', 'number,title,author,createdAt,url,state',
     '--limit', '20',
     '-s', 'all',
-  ], signal);
+  ], log, signal);
   if (!json) return [];
   try {
     const items: GHItem[] = JSON.parse(json);
     return items.filter(
-      (i) => i.author.login.toLowerCase() !== ignoreUser.toLowerCase()
+      (i) => !ignoreAuthors.has(i.author.login.toLowerCase())
         && i.createdAt > since,
     );
   } catch { return []; }
@@ -104,7 +112,8 @@ async function fetchNewIssues(
 async function fetchNewPRs(
   repo: string,
   since: string,
-  ignoreUser: string,
+  ignoreAuthors: Set<string>,
+  log: Log,
   signal?: AbortSignal,
 ): Promise<GHItem[]> {
   const json = await gh([
@@ -113,12 +122,12 @@ async function fetchNewPRs(
     '--json', 'number,title,author,createdAt,url,state,isDraft',
     '--limit', '20',
     '-s', 'all',
-  ], signal);
+  ], log, signal);
   if (!json) return [];
   try {
     const items: GHItem[] = JSON.parse(json);
     return items.filter(
-      (i) => i.author.login.toLowerCase() !== ignoreUser.toLowerCase()
+      (i) => !ignoreAuthors.has(i.author.login.toLowerCase())
         && i.createdAt > since,
     );
   } catch { return []; }
@@ -127,8 +136,9 @@ async function fetchNewPRs(
 async function fetchRecentComments(
   repo: string,
   since: string,
-  ignoreUser: string,
+  ignoreAuthors: Set<string>,
   limit: number,
+  log: Log,
   signal?: AbortSignal,
 ): Promise<GHComment[]> {
   // Use GraphQL for efficient comment fetching across all issues/PRs
@@ -175,7 +185,7 @@ async function fetchRecentComments(
     '-f', `query=${query}`,
     '-f', `owner=${owner}`,
     '-f', `repo=${name}`,
-  ], signal);
+  ], log, signal);
 
   if (!json) return [];
 
@@ -189,7 +199,7 @@ async function fetchRecentComments(
       for (const item of repoData[source]?.nodes ?? []) {
         for (const comment of item.comments?.nodes ?? []) {
           if (
-            comment.author?.login?.toLowerCase() !== ignoreUser.toLowerCase()
+            !ignoreAuthors.has(comment.author?.login?.toLowerCase() ?? '')
             && comment.createdAt > since
           ) {
             comments.push({
@@ -211,14 +221,15 @@ async function fetchRecentComments(
 async function fetchRepoActivity(
   repo: string,
   repoState: RepoState,
-  ignoreUser: string,
+  ignoreAuthors: Set<string>,
   commentLimit: number,
+  log: Log,
   signal?: AbortSignal,
 ): Promise<RepoActivity> {
   const [newIssues, newPRs, newComments] = await Promise.all([
-    fetchNewIssues(repo, repoState.lastIssueAt, ignoreUser, signal),
-    fetchNewPRs(repo, repoState.lastPrAt, ignoreUser, signal),
-    fetchRecentComments(repo, repoState.lastCommentAt, ignoreUser, commentLimit, signal),
+    fetchNewIssues(repo, repoState.lastIssueAt, ignoreAuthors, log, signal),
+    fetchNewPRs(repo, repoState.lastPrAt, ignoreAuthors, log, signal),
+    fetchRecentComments(repo, repoState.lastCommentAt, ignoreAuthors, commentLimit, log, signal),
   ]);
 
   return { repo, newIssues, newPRs, newComments };
@@ -330,8 +341,8 @@ export default {
     enabled: true,
     /** GitHub repos to watch — array of 'owner/repo' strings */
     repos: [],
-    /** GitHub username to ignore (your own activity) */
-    ignoreUser: 'edimuj',
+    /** GitHub usernames to ignore (e.g. your own, bots) */
+    ignoreAuthors: [] as string[],
     /** Max comments to fetch per repo per check */
     commentLimit: 10,
     /** Output format: 'compact' for interval, 'detailed' for session-start */
@@ -347,18 +358,22 @@ export default {
   async gather(
     trigger: Trigger,
     config: PluginConfig,
-    prevState: Record<string, unknown> | null,
-    _context: GatherContext,
-  ): Promise<GatherResult | null> {
+    prevState: WatcherState | null,
+    context: GatherContext,
+  ): Promise<GatherResult<WatcherState> | null> {
     const repos = config.repos as string[];
     if (!repos || repos.length === 0) return null;
 
-    const ignoreUser = (config.ignoreUser as string) ?? 'edimuj';
+    const log = makeLog(context);
+    const signal = context.signal;
+    const ignoreAuthors = new Set(
+      ((config.ignoreAuthors as string[]) ?? []).map((u) => u.toLowerCase()),
+    );
     const commentLimit = (config.commentLimit as number) ?? 10;
     const onlyWhenNew = config.onlyWhenNew !== false;
 
     // Restore state
-    const state: WatcherState = (prevState as WatcherState | null) ?? {
+    const state: WatcherState = prevState ?? {
       repos: {},
       lastCheck: new Date().toISOString(),
     };
@@ -373,7 +388,7 @@ export default {
     // Fetch activity for all repos in parallel
     const activities = await Promise.all(
       repos.map((repo) =>
-        fetchRepoActivity(repo, state.repos[repo]!, ignoreUser, commentLimit)
+        fetchRepoActivity(repo, state.repos[repo]!, ignoreAuthors, commentLimit, log, signal)
           .catch((): RepoActivity => ({ repo, newIssues: [], newPRs: [], newComments: [] })),
       ),
     );
@@ -405,12 +420,12 @@ export default {
 
     // If onlyWhenNew and nothing to report, still update state silently
     if (onlyWhenNew && !text) {
-      return { text: '', state: newState as unknown as Record<string, unknown> };
+      return { text: '', state: newState };
     }
 
     return {
       text: text || 'GitHub: no new external activity',
-      state: newState as unknown as Record<string, unknown>,
+      state: newState,
     };
   },
 
@@ -442,7 +457,10 @@ export default {
           const repos = params.repo ? [params.repo as string] : allRepos;
           if (!repos.length) return { text: 'No repos configured' };
 
-          const ignoreUser = (config.ignoreUser as string) ?? 'edimuj';
+          const log = makeLog();
+          const ignoreAuthors = new Set(
+            ((config.ignoreAuthors as string[]) ?? []).map((u) => u.toLowerCase()),
+          );
           const commentLimit = (config.commentLimit as number) ?? 10;
 
           const state = (prevState as WatcherState | null) ?? {
@@ -472,7 +490,7 @@ export default {
 
           const activities = await Promise.all(
             repos.map((repo) =>
-              fetchRepoActivity(repo, checkState.repos[repo]!, ignoreUser, commentLimit, signal)
+              fetchRepoActivity(repo, checkState.repos[repo]!, ignoreAuthors, commentLimit, log, signal)
                 .catch((): RepoActivity => ({ repo, newIssues: [], newPRs: [], newComments: [] })),
             ),
           );
@@ -490,7 +508,7 @@ export default {
           }
 
           const text = formatDetailed(activities) || 'No new external activity';
-          return { text, state: newState as unknown as Record<string, unknown> };
+          return { text, state: newState };
         },
       },
       {
@@ -519,4 +537,4 @@ export default {
       },
     ],
   },
-} satisfies AwarenessPlugin;
+} satisfies AwarenessPlugin<WatcherState>;

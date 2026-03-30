@@ -5,7 +5,7 @@ An [agent-awareness](https://github.com/edimuj/agent-awareness) provider plugin 
 ## Features
 
 - **Delta-only reporting** — tracks state per repo, only reports new activity since last check
-- **External-only filtering** — ignores your own activity (configurable `ignoreUser`)
+- **External-only filtering** — ignore specific users like your own account or bots (`ignoreAuthors`)
 - **Parallel fetching** — checks all repos concurrently
 - **Compact + detailed formats** — compact for intervals, detailed for session start
 - **MCP tools** — on-demand `check` and `repos` tools for real-time queries
@@ -30,7 +30,7 @@ Create `~/.config/agent-awareness/plugins.d/github-watcher.json`:
     "owner/repo1",
     "owner/repo2"
   ],
-  "ignoreUser": "your-github-username",
+  "ignoreAuthors": ["your-github-username", "dependabot[bot]"],
   "commentLimit": 10,
   "onlyWhenNew": true,
   "triggers": {
@@ -45,7 +45,7 @@ Create `~/.config/agent-awareness/plugins.d/github-watcher.json`:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `repos` | `string[]` | `[]` | Repos to watch (`owner/repo` format) |
-| `ignoreUser` | `string` | `"edimuj"` | GitHub username to filter out |
+| `ignoreAuthors` | `string[]` | `[]` | GitHub usernames to filter out |
 | `commentLimit` | `number` | `10` | Max comments per repo per check |
 | `format` | `string` | `"auto"` | Output format: `compact`, `detailed`, or `auto` |
 | `onlyWhenNew` | `boolean` | `true` | Only inject when there's new activity |

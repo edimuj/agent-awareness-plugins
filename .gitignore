@@ -2,3 +2,8 @@ node_modules/
 *.js
 *.d.ts
 *.map
+share/
+.idea/
+.claude-rig
+CLAUDE.md
+.dev/

@@ -3,5 +3,9 @@
   "version": "0.1.0",
   "description": "Community provider plugins for agent-awareness",
   "private": true,
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "agent-awareness": "^0.2.0"
+  }
 }

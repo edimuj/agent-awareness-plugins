@@ -23,7 +23,7 @@ import type {
   GatherResult,
   PluginConfig,
   Trigger,
-} from 'agent-awareness/src/core/types.ts';
+} from 'agent-awareness';
 
 const exec = promisify(execCb);
 
@@ -41,7 +41,7 @@ interface MetricState {
   lastAlertValue: number;
 }
 
-interface HealthState {
+interface HealthState extends Record<string, unknown> {
   metrics: Record<string, MetricState>;
   /** ISO timestamp of first gather (used for session-start detection) */
   initialized: string;
@@ -94,18 +94,18 @@ function collectLoadAvg(): number {
   return Math.round((load / numCpus) * 100);
 }
 
-async function collectSwapUsage(): Promise<number> {
+async function collectSwapUsage(signal?: AbortSignal): Promise<number> {
   try {
-    const { stdout } = await exec("free -b | awk '/Swap:/ {if($2>0) print int(($3/$2)*100); else print 0}'");
+    const { stdout } = await exec("free -b | awk '/Swap:/ {if($2>0) print int(($3/$2)*100); else print 0}'", { signal });
     return parseInt(stdout.trim(), 10) || 0;
   } catch { return 0; }
 }
 
-async function collectDockerHealth(): Promise<{ total: number; unhealthy: string[] }> {
+async function collectDockerHealth(signal?: AbortSignal): Promise<{ total: number; unhealthy: string[] }> {
   try {
     const { stdout } = await exec(
       'docker ps --format "{{.Names}}\\t{{.Status}}" 2>/dev/null',
-      { env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } },
+      { signal, env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } },
     );
     if (!stdout.trim()) return { total: 0, unhealthy: [] };
     const lines = stdout.trim().split('\n');
@@ -116,9 +116,9 @@ async function collectDockerHealth(): Promise<{ total: number; unhealthy: string
   } catch { return { total: 0, unhealthy: [] }; }
 }
 
-async function collectOpenFiles(): Promise<number> {
+async function collectOpenFiles(signal?: AbortSignal): Promise<number> {
   try {
-    const { stdout } = await exec("cat /proc/sys/fs/file-nr | awk '{print int(($1/$3)*100)}'");
+    const { stdout } = await exec("cat /proc/sys/fs/file-nr | awk '{print int(($1/$3)*100)}'", { signal });
     return parseInt(stdout.trim(), 10) || 0;
   } catch { return 0; }
 }
@@ -197,13 +197,14 @@ function formatAlerts(readings: MetricReading[]): string {
 
 async function collectAllMetrics(
   config: PluginConfig,
-  prevState: Record<string, unknown> | null,
+  prevState: HealthState | null,
+  signal?: AbortSignal,
 ): Promise<{ readings: MetricReading[]; newState: HealthState }> {
   const metricsConfig = (config.metrics ?? {}) as Record<string, MetricConfig>;
   const diskPaths = (config.diskPaths as string[]) ?? ['/'];
   const now = new Date().toISOString();
 
-  const state: HealthState = (prevState as HealthState | null) ?? {
+  const state: HealthState = prevState ?? {
     metrics: {},
     initialized: now,
   };
@@ -216,13 +217,12 @@ async function collectAllMetrics(
     value: number,
     unit: string,
     mc: MetricConfig,
-    statusOverride?: MetricStatus,
   ) {
     const prev = state.metrics[key] ?? { status: 'normal' as MetricStatus, since: now, lastAlertAt: '', lastAlertValue: 0 };
-    const status = statusOverride ?? evaluateStatus(value, mc.thresholds, prev.status);
-    const transition = status !== prev.status
-      ? (status === 'normal' ? 'recovered' : 'escalated') as const
-      : 'none' as const;
+    const status = evaluateStatus(value, mc.thresholds, prev.status);
+    const transition: MetricReading['transition'] = status !== prev.status
+      ? (status === 'normal' ? 'recovered' : 'escalated')
+      : 'none';
 
     const reading: MetricReading = {
       name: key,
@@ -240,7 +240,7 @@ async function collectAllMetrics(
   }
 
   // Disk
-  if (metricsConfig.disk?.enabled !== false) {
+  if (metricsConfig.disk?.enabled) {
     const mc = { ...defaultMetricConfig, ...metricsConfig.disk };
     for (const diskPath of diskPaths) {
       try {
@@ -251,39 +251,38 @@ async function collectAllMetrics(
   }
 
   // Memory
-  if (metricsConfig.memory?.enabled !== false) {
+  if (metricsConfig.memory?.enabled) {
     const mc = { ...defaultMetricConfig, ...metricsConfig.memory };
     collectReading('memory', 'Memory', collectMemoryUsage(), '%', mc);
   }
 
   // Swap
-  if (metricsConfig.swap?.enabled !== false) {
+  if (metricsConfig.swap?.enabled) {
     const mc = { ...defaultMetricConfig, ...metricsConfig.swap };
-    collectReading('swap', 'Swap', await collectSwapUsage(), '%', mc);
+    collectReading('swap', 'Swap', await collectSwapUsage(signal), '%', mc);
   }
 
   // Load
-  if (metricsConfig.load?.enabled !== false) {
+  if (metricsConfig.load?.enabled) {
     const mc = { ...defaultMetricConfig, ...metricsConfig.load };
     collectReading('load', 'CPU Load', collectLoadAvg(), '% (per-CPU)', mc);
   }
 
   // Open files
-  if (metricsConfig.openFiles?.enabled !== false) {
+  if (metricsConfig.openFiles?.enabled) {
     const mc = { ...defaultMetricConfig, ...metricsConfig.openFiles };
-    collectReading('openFiles', 'Open Files', await collectOpenFiles(), '%', mc);
+    collectReading('openFiles', 'Open Files', await collectOpenFiles(signal), '%', mc);
   }
 
   // Docker
-  if (metricsConfig.docker?.enabled !== false) {
+  if (metricsConfig.docker?.enabled) {
     const mc = { ...defaultMetricConfig, ...metricsConfig.docker };
-    const docker = await collectDockerHealth();
+    const docker = await collectDockerHealth(signal);
     const value = docker.unhealthy.length;
     const label = value > 0
       ? `Docker (${docker.unhealthy.join(', ')})`
       : `Docker (${docker.total} containers)`;
-    const status: MetricStatus = value > 0 ? 'warning' : 'normal';
-    collectReading('docker', label, value, ' unhealthy', mc, status);
+    collectReading('docker', label, value, ' unhealthy', mc);
   }
 
   // Update state
@@ -328,10 +327,7 @@ export default {
     /** Per-metric configuration */
     metrics: {
       disk: { ...defaultMetricConfig },
-      memory: {
-        ...defaultMetricConfig,
-        thresholds: { warning: 80, critical: 90, hysteresis: 5 },
-      },
+      memory: { ...defaultMetricConfig },
       swap: {
         ...defaultMetricConfig,
         thresholds: { warning: 60, critical: 80, hysteresis: 10 },
@@ -348,8 +344,7 @@ export default {
       },
       docker: {
         enabled: true,
-        // Docker doesn't use numeric thresholds — any unhealthy container is a warning
-        thresholds: { warning: 1, critical: 1, hysteresis: 0 },
+        thresholds: { warning: 1, critical: 3, hysteresis: 1 },
         cooldownSeconds: 300,
       },
     },
@@ -362,19 +357,16 @@ export default {
   async gather(
     trigger: Trigger,
     config: PluginConfig,
-    prevState: Record<string, unknown> | null,
-    _context: GatherContext,
-  ): Promise<GatherResult | null> {
-    const { readings, newState } = await collectAllMetrics(config, prevState);
+    prevState: HealthState | null,
+    context: GatherContext,
+  ): Promise<GatherResult<HealthState> | null> {
+    const { readings, newState } = await collectAllMetrics(config, prevState, context.signal);
 
     const triggerFormat = config.triggers?.[trigger as string];
     const isFullReport = triggerFormat === 'full' || trigger === 'session-start';
 
     if (isFullReport) {
-      return {
-        text: formatFullStatus(readings),
-        state: newState as unknown as Record<string, unknown>,
-      };
+      return { text: formatFullStatus(readings), state: newState };
     }
 
     // Alert mode: only report transitions that aren't cooldown-suppressed
@@ -382,10 +374,10 @@ export default {
     const text = formatAlerts(alertableReadings);
 
     if (!text) {
-      return { text: '', state: newState as unknown as Record<string, unknown> };
+      return { text: '', state: newState };
     }
 
-    return { text, state: newState as unknown as Record<string, unknown> };
+    return { text, state: newState };
   },
 
   mcp: {
@@ -397,15 +389,11 @@ export default {
         async handler(
           _params: Record<string, unknown>,
           config: PluginConfig,
-          _signal: AbortSignal,
+          signal: AbortSignal,
           prevState: Record<string, unknown> | null,
         ): Promise<GatherResult | null> {
-          // Collect fresh readings for full status
-          const readings = await collectAllMetrics(config, prevState);
-          return {
-            text: formatFullStatus(readings.readings),
-            state: readings.newState as unknown as Record<string, unknown>,
-          };
+          const { readings, newState } = await collectAllMetrics(config, prevState as HealthState | null, signal);
+          return { text: formatFullStatus(readings), state: newState };
         },
       },
       {
@@ -434,7 +422,7 @@ export default {
             return { text: `Unknown metric: ${metric}` };
           }
 
-          // Reset last alert time far into the past to prevent re-alerting
+          // Set last alert time to now — starts a fresh cooldown window
           const newState: HealthState = {
             ...state,
             metrics: {
@@ -448,10 +436,10 @@ export default {
 
           return {
             text: `Acknowledged: ${metric} (status: ${state.metrics[metric].status})`,
-            state: newState as unknown as Record<string, unknown>,
+            state: newState,
           };
         },
       },
     ],
   },
-} satisfies AwarenessPlugin;
+} satisfies AwarenessPlugin<HealthState>;
