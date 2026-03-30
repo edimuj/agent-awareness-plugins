@@ -4,9 +4,17 @@
   "description": "Server health alerts for agent-awareness — threshold-based with hysteresis and cooldown",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./index.ts"
   },
-  "main": "./src/index.ts",
+  "main": "./index.ts",
   "keywords": ["agent-awareness", "plugin", "server", "health", "monitoring"],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edimuj/agent-awareness-plugins.git",
+    "directory": "server-health"
+  },
+  "peerDependencies": {
+    "agent-awareness": ">=0.2.0"
+  }
 }

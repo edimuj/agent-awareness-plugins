@@ -4,6 +4,11 @@
   "description": "Community provider plugins for agent-awareness",
   "private": true,
   "license": "MIT",
+  "workspaces": [
+    "github-watcher",
+    "server-health",
+    "pr-pilot"
+  ],
   "devDependencies": {
     "@types/node": "^25.5.0",
     "agent-awareness": "^0.2.0"

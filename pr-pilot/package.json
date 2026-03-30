@@ -4,9 +4,17 @@
   "description": "PR lifecycle manager for agent-awareness — tracks outbound PRs, detects events, frames agent actions",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./index.ts"
   },
-  "main": "./src/index.ts",
+  "main": "./index.ts",
   "keywords": ["agent-awareness", "plugin", "github", "pull-request", "pr", "ci", "review"],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edimuj/agent-awareness-plugins.git",
+    "directory": "pr-pilot"
+  },
+  "peerDependencies": {
+    "agent-awareness": ">=0.2.0"
+  }
 }
