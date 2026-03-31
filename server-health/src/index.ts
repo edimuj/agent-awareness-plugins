@@ -132,18 +132,22 @@ function evaluateStatus(
 ): MetricStatus {
   const { warning, critical, hysteresis } = thresholds;
 
-  // Escalation: use exact thresholds
+  // Recovery/escalation from critical uses the critical hysteresis band.
+  if (prevStatus === 'critical') {
+    if (value >= (critical - hysteresis)) return 'critical';
+    if (value >= warning) return 'warning';
+    return 'normal';
+  }
+  // Recovery/escalation from warning uses the warning hysteresis band.
+  if (prevStatus === 'warning') {
+    if (value >= critical) return 'critical';
+    if (value >= (warning - hysteresis)) return 'warning';
+    return 'normal';
+  }
+
+  // Escalation from normal uses exact thresholds.
   if (value >= critical) return 'critical';
   if (value >= warning) return 'warning';
-
-  // Recovery: use hysteresis band (must drop below threshold - hysteresis)
-  if (prevStatus === 'critical') {
-    return value >= (critical - hysteresis) ? 'critical' : value >= warning ? 'warning' : 'normal';
-  }
-  if (prevStatus === 'warning') {
-    return value >= (warning - hysteresis) ? 'warning' : 'normal';
-  }
-
   return 'normal';
 }
 

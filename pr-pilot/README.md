@@ -10,7 +10,7 @@ Getting PRs merged on external repos is harder than ever. AI security audits, au
 
 ## Features
 
-- **Auto-discovery** — finds all your open PRs across GitHub, zero config
+- **Auto-discovery** — finds your open PRs across GitHub (external repos by default), zero config
 - **Event detection** — CI failures, review comments, merge conflicts, staleness
 - **Configurable autonomy** — per-event control: notify, suggest, or instruct the agent to act
 - **Dormancy backoff** — active PRs checked every 5 min, dormant PRs ~hourly
@@ -34,6 +34,8 @@ Create `~/.config/agent-awareness/plugins.d/pr-pilot.json`:
 {
   "enabled": true,
   "autoDiscover": true,
+  "includeOwnRepos": false,
+  "includeControlledOrgRepos": false,
   "repos": [],
   "username": "",
   "autonomy": {
@@ -59,6 +61,8 @@ Create `~/.config/agent-awareness/plugins.d/pr-pilot.json`:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `autoDiscover` | `boolean` | `true` | Auto-find open PRs via `gh search prs --author` |
+| `includeOwnRepos` | `boolean` | `false` | Include PRs targeting repos owned by your username |
+| `includeControlledOrgRepos` | `boolean` | `false` | Include PRs targeting org repos where you have write/maintain/admin permission |
 | `repos` | `string[]` | `[]` | Repo allowlist for auto-discovery (empty = all repos) |
 | `username` | `string` | `""` | GitHub username (empty = resolve from `gh auth status`) |
 | `autonomy` | `object` | see below | Per-event autonomy levels |
@@ -128,7 +132,7 @@ PR Pilot: CI failed on vercel/next.js#4521 "Fix SSR hydration mismatch": 2 faile
 
 ## Discovery modes
 
-- **`autoDiscover: true`** (default) — polls GitHub search API for your open PRs. Optional `repos` allowlist to limit scope. Discovery runs at session start and every ~30 minutes.
+- **`autoDiscover: true`** (default) — polls GitHub search API for your open PRs. By default it excludes repos you control (your own repos plus org repos where you have write-level permission). Optional `repos` allowlist limits scope. Discovery runs at session start and every ~30 minutes.
 - **`autoDiscover: false`** — explicit tracking only via the `track` MCP tool.
 - Manual tracking via `track` is always available regardless of mode.
 

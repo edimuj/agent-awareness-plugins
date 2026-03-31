@@ -66,6 +66,8 @@ interface PRState {
   checks: ChecksSnapshot;
   reviews: ReviewSnapshot;
   mergeable: boolean | null;
+  /** Sticky flag for unresolved conflict history when GitHub reports transient UNKNOWN */
+  hadConflict?: boolean;
   labels: string[];
   lastActivityAt: string;
   trackedAt: string;
@@ -175,9 +177,36 @@ interface DiscoveredPR {
   updatedAt: string;
 }
 
+function repoOwner(repo: string): string {
+  return repo.split('/')[0]?.toLowerCase() ?? '';
+}
+
+const CONTROLLED_PERMISSIONS = new Set(['ADMIN', 'MAINTAIN', 'WRITE']);
+
+async function hasWriteControl(
+  repo: string,
+  log: Log,
+  signal: AbortSignal | undefined,
+  cache: Map<string, boolean>,
+): Promise<boolean> {
+  const cached = cache.get(repo);
+  if (cached !== undefined) return cached;
+
+  const permission = await gh(
+    ['repo', 'view', repo, '--json', 'viewerPermission', '-q', '.viewerPermission'],
+    log,
+    signal,
+  );
+  const controlled = CONTROLLED_PERMISSIONS.has(permission.trim().toUpperCase());
+  cache.set(repo, controlled);
+  return controlled;
+}
+
 async function discoverOpenPRs(
   username: string,
   repos: string[],
+  includeOwnRepos: boolean,
+  includeControlledOrgRepos: boolean,
   log: Log,
   signal?: AbortSignal,
 ): Promise<DiscoveredPR[]> {
@@ -200,8 +229,22 @@ async function discoverOpenPRs(
       updatedAt: string;
     }> = JSON.parse(json);
 
-    return results
-      .filter((r) => repos.length === 0 || repos.includes(r.repository.nameWithOwner))
+    const usernameLower = username.toLowerCase();
+    const prelim = results.filter((r) => repos.length === 0 || repos.includes(r.repository.nameWithOwner));
+    const controlCache = new Map<string, boolean>();
+
+    const selected = await Promise.all(prelim.map(async (r) => {
+      const owner = repoOwner(r.repository.nameWithOwner);
+      if (owner === usernameLower) {
+        return includeOwnRepos ? r : null;
+      }
+      if (includeControlledOrgRepos) return r;
+      const controlled = await hasWriteControl(r.repository.nameWithOwner, log, signal, controlCache);
+      return controlled ? null : r;
+    }));
+
+    return selected
+      .filter((r): r is typeof prelim[number] => r !== null)
       .map((r) => ({
         repo: r.repository.nameWithOwner,
         number: r.number,
@@ -484,12 +527,12 @@ function detectEvents(
   }
 
   // Merge conflicts
-  const prevMergeable = prev.mergeable;
+  const prevHadConflict = prev.hadConflict ?? (prev.mergeable === false);
   const nowMergeable = data.mergeable === 'MERGEABLE' ? true : data.mergeable === 'CONFLICTING' ? false : null;
-  if (nowMergeable === false && prevMergeable !== false) {
+  if (nowMergeable === false && !prevHadConflict) {
     events.push({ type: 'conflict_detected', pr: key });
   }
-  if (nowMergeable === true && prevMergeable === false) {
+  if (nowMergeable === true && prevHadConflict) {
     events.push({ type: 'now_mergeable', pr: key });
   }
 
@@ -635,6 +678,7 @@ function formatEvents(events: PREvent[], state: PilotState, autonomy: AutonomyCo
 
 function buildPRState(data: FetchedPRData, source: 'auto' | 'manual'): PRState {
   const now = new Date().toISOString();
+  const mergeable = data.mergeable === 'MERGEABLE' ? true : data.mergeable === 'CONFLICTING' ? false : null;
   return {
     url: data.url,
     repo: '',
@@ -643,7 +687,8 @@ function buildPRState(data: FetchedPRData, source: 'auto' | 'manual'): PRState {
     branch: data.branch,
     checks: data.checks,
     reviews: data.reviews,
-    mergeable: data.mergeable === 'MERGEABLE' ? true : data.mergeable === 'CONFLICTING' ? false : null,
+    mergeable,
+    hadConflict: mergeable === false,
     labels: data.labels,
     lastActivityAt: data.updatedAt,
     trackedAt: now,
@@ -654,6 +699,13 @@ function buildPRState(data: FetchedPRData, source: 'auto' | 'manual'): PRState {
 }
 
 function updatePRState(prev: PRState, data: FetchedPRData, events: PREvent[]): PRState {
+  const nowMergeable = data.mergeable === 'MERGEABLE' ? true : data.mergeable === 'CONFLICTING' ? false : null;
+  const hadConflict = nowMergeable === false
+    ? true
+    : nowMergeable === true
+      ? false
+      : (prev.hadConflict ?? (prev.mergeable === false));
+
   const updated: PRState = {
     ...prev,
     title: data.title,
@@ -661,7 +713,8 @@ function updatePRState(prev: PRState, data: FetchedPRData, events: PREvent[]): P
     url: data.url,
     checks: data.checks,
     reviews: data.reviews,
-    mergeable: data.mergeable === 'MERGEABLE' ? true : data.mergeable === 'CONFLICTING' ? false : null,
+    mergeable: nowMergeable,
+    hadConflict,
     labels: data.labels,
     lastActivityAt: data.updatedAt,
     status: data.ghState === 'MERGED' ? 'merged' : data.ghState === 'CLOSED' ? 'closed' : 'open',
@@ -712,6 +765,8 @@ export default {
   defaults: {
     enabled: true,
     autoDiscover: true,
+    includeOwnRepos: false,
+    includeControlledOrgRepos: false,
     repos: [] as string[],
     username: '',
     autonomy: {
@@ -744,6 +799,8 @@ export default {
     const staleTtlDays = (config.staleTtlDays as number) ?? 30;
     const dormantBackoffCycles = (config.dormantBackoffCycles as number) ?? 12;
     const repos = (config.repos as string[]) ?? [];
+    const includeOwnRepos = config.includeOwnRepos === true;
+    const includeControlledOrgRepos = config.includeControlledOrgRepos === true;
     const autoDiscover = config.autoDiscover !== false;
 
     const now = new Date().toISOString();
@@ -776,7 +833,14 @@ export default {
     );
 
     if (shouldDiscover) {
-      const discovered = await discoverOpenPRs(state.resolvedUsername, repos, log, signal);
+      const discovered = await discoverOpenPRs(
+        state.resolvedUsername,
+        repos,
+        includeOwnRepos,
+        includeControlledOrgRepos,
+        log,
+        signal,
+      );
       for (const d of discovered) {
         const key = prKey(d.repo, d.number);
         if (!state.prs[key]) {

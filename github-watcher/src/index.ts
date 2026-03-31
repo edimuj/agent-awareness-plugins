@@ -198,12 +198,16 @@ async function fetchRecentComments(
     for (const source of ['issueComments', 'prComments'] as const) {
       for (const item of repoData[source]?.nodes ?? []) {
         for (const comment of item.comments?.nodes ?? []) {
+          const authorLogin = comment.author?.login?.toLowerCase() ?? 'unknown';
           if (
-            !ignoreAuthors.has(comment.author?.login?.toLowerCase() ?? '')
+            !ignoreAuthors.has(authorLogin)
             && comment.createdAt > since
           ) {
             comments.push({
-              ...comment,
+              author: { login: comment.author?.login ?? 'unknown' },
+              body: comment.body,
+              createdAt: comment.createdAt,
+              url: comment.url,
               issueNumber: item.number,
               issueTitle: item.title,
             });
@@ -469,7 +473,10 @@ export default {
           };
 
           // If specific since was given, create temp state with that timestamp
-          const checkState = { ...state };
+          const checkState: WatcherState = {
+            ...state,
+            repos: { ...state.repos },
+          };
           if (params.since) {
             for (const repo of repos) {
               checkState.repos[repo] = {

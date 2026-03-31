@@ -4,6 +4,9 @@
   "description": "Community provider plugins for agent-awareness",
   "private": true,
   "license": "MIT",
+  "scripts": {
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts"
+  },
   "workspaces": [
     "github-watcher",
     "server-health",
@@ -11,6 +14,7 @@
   ],
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "agent-awareness": "^0.2.0"
+    "agent-awareness": "^0.2.0",
+    "tsx": "^4.21.0"
   }
 }
