@@ -10,6 +10,8 @@ MCP-tool-only — no triggers, no background activity. Invoke on demand to simul
 npm install -g agent-awareness-plugin-claim-debugger
 ```
 
+The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
+
 ## MCP Tools
 
 | Tool | Description |

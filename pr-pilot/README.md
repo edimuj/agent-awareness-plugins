@@ -24,7 +24,7 @@ Getting PRs merged on external repos is harder than ever. AI security audits, au
 npm install -g agent-awareness-plugin-pr-pilot
 ```
 
-The agent-awareness loader auto-discovers globally installed plugins.
+The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
 ## Configuration
 

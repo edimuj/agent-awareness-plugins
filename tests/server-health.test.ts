@@ -5,17 +5,13 @@ import { pluginUrl, testContext, withFakeCommand } from './helpers.ts';
 
 test('server-health keeps critical status within critical hysteresis band', async () => {
   await withFakeCommand(
-    'docker',
+    'sg',
     `
-if [[ "$1" == "ps" ]]; then
-  cat <<'OUT'
+# Called as: sg docker -c 'docker ps --format "{{.Names}}\t{{.Status}}"'
+cat <<'OUT'
 svc-a	Up 1 minute (unhealthy)
 svc-b	Up 1 minute (unhealthy)
 OUT
-  exit 0
-fi
-echo "unexpected docker args: $*" >&2
-exit 1
 `,
     async () => {
       const plugin = (await import(pluginUrl('server-health/src/index.ts'))).default;

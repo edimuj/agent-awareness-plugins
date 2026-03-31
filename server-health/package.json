@@ -1,12 +1,21 @@
 {
   "name": "agent-awareness-plugin-server-health",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Server health alerts for agent-awareness — threshold-based with hysteresis and cooldown",
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.js"
   },
-  "main": "./index.ts",
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
+  },
   "keywords": [
     "agent-awareness",
     "plugin",
@@ -21,6 +30,6 @@
     "directory": "server-health"
   },
   "peerDependencies": {
-    "agent-awareness": ">=0.2.0"
+    "agent-awareness": ">=0.4.0"
   }
 }

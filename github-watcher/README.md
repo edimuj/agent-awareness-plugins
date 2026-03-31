@@ -17,7 +17,7 @@ An [agent-awareness](https://github.com/edimuj/agent-awareness) provider plugin 
 npm install -g agent-awareness-plugin-github-watcher
 ```
 
-The agent-awareness loader auto-discovers globally installed plugins.
+The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
 ## Configuration
 

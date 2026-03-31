@@ -1,12 +1,16 @@
 {
   "name": "agent-awareness-plugin-claim-debugger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Debug and test the multi-agent event claiming system — simulate events, inspect claims, force contention",
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.js"
   },
-  "main": "./index.ts",
+  "main": "./index.js",
+  "files": ["index.js", "src/**/*.js", "src/**/*.d.ts", "README.md"],
+  "scripts": {
+    "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
+  },
   "keywords": [
     "agent-awareness",
     "plugin",
@@ -22,6 +26,6 @@
     "directory": "claim-debugger"
   },
   "peerDependencies": {
-    "agent-awareness": ">=0.3.0"
+    "agent-awareness": ">=0.4.0"
   }
 }

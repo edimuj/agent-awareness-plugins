@@ -5,6 +5,8 @@
   "private": true,
   "license": "MIT",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json --noEmit false",
+    "clean": "find . -path ./node_modules -prune -o \\( -name '*.js' -o -name '*.d.ts' -o -name '*.map' \\) -not -path ./node_modules -print -exec rm {} +",
     "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts"
   },
   "workspaces": [
@@ -15,7 +17,7 @@
   ],
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "agent-awareness": "^0.3.0",
+    "agent-awareness": "file:../agent-awareness",
     "tsx": "^4.21.0"
   }
 }

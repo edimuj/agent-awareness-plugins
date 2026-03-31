@@ -30,7 +30,7 @@ Unlike simple polling monitors that report every check, this plugin operates on 
 npm install -g agent-awareness-plugin-server-health
 ```
 
-The agent-awareness loader auto-discovers globally installed plugins.
+The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
 ## Configuration
 

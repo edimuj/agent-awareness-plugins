@@ -104,7 +104,7 @@ async function collectSwapUsage(signal?: AbortSignal): Promise<number> {
 async function collectDockerHealth(signal?: AbortSignal): Promise<{ total: number; unhealthy: string[] }> {
   try {
     const { stdout } = await exec(
-      'docker ps --format "{{.Names}}\\t{{.Status}}" 2>/dev/null',
+      'sg docker -c \'docker ps --format "{{.Names}}\\t{{.Status}}"\' 2>/dev/null',
       { signal, env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } },
     );
     if (!stdout.trim()) return { total: 0, unhealthy: [] };

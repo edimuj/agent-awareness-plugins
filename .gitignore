@@ -6,4 +6,5 @@ share/
 .idea/
 .claude-rig
 CLAUDE.md
+AGENTS.md
 .dev/
