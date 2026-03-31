@@ -13,11 +13,11 @@ An [agent-awareness](https://github.com/edimuj/agent-awareness) provider plugin 
 
 ## Installation
 
-Symlink or copy into your local agent-awareness plugins directory:
-
 ```bash
-ln -s /path/to/agent-awareness-plugins/github-watcher ~/.config/agent-awareness/plugins/github-watcher
+npm install -g agent-awareness-plugin-github-watcher
 ```
+
+The agent-awareness loader auto-discovers globally installed plugins.
 
 ## Configuration
 

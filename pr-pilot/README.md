@@ -20,11 +20,11 @@ Getting PRs merged on external repos is harder than ever. AI security audits, au
 
 ## Installation
 
-Symlink or copy into your local agent-awareness plugins directory:
-
 ```bash
-ln -s /path/to/agent-awareness-plugins/pr-pilot ~/.config/agent-awareness/plugins/pr-pilot
+npm install -g agent-awareness-plugin-pr-pilot
 ```
+
+The agent-awareness loader auto-discovers globally installed plugins.
 
 ## Configuration
 

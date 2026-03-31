@@ -374,7 +374,21 @@ export default {
     }
 
     // Alert mode: only report transitions that aren't cooldown-suppressed
-    const alertableReadings = readings.filter((r) => r.transition !== 'none' && !r.cooldownActive);
+    let alertableReadings = readings.filter((r) => r.transition !== 'none' && !r.cooldownActive);
+
+    // Claim alerts to prevent duplicate action across concurrent sessions
+    if (context.claims && alertableReadings.length > 0) {
+      const claimed: MetricReading[] = [];
+      for (const reading of alertableReadings) {
+        const claimKey = `${reading.name}:${reading.transition}:${reading.status}`;
+        const { claimed: ok } = await context.claims.tryClaim(claimKey, 10);
+        if (ok) {
+          claimed.push(reading);
+        }
+      }
+      alertableReadings = claimed;
+    }
+
     const text = formatAlerts(alertableReadings);
 
     if (!text) {

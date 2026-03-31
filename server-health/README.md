@@ -27,8 +27,10 @@ Unlike simple polling monitors that report every check, this plugin operates on 
 ## Installation
 
 ```bash
-ln -s /path/to/agent-awareness-plugins/server-health ~/.config/agent-awareness/plugins/server-health
+npm install -g agent-awareness-plugin-server-health
 ```
+
+The agent-awareness loader auto-discovers globally installed plugins.
 
 ## Configuration
 

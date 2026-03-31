@@ -14,7 +14,7 @@
   ],
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "agent-awareness": "^0.2.0",
+    "agent-awareness": "^0.3.0",
     "tsx": "^4.21.0"
   }
 }

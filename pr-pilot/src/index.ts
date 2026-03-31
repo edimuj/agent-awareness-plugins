@@ -105,6 +105,8 @@ interface PREvent {
     | 'label_added';
   pr: string;
   details?: string;
+  /** Set when another agent session has already claimed this event */
+  claimedByOther?: boolean;
 }
 
 type Log = NonNullable<GatherContext['log']>;
@@ -582,6 +584,9 @@ function frameEvent(event: PREvent, autonomy: AutonomyConfig, prTitle: string): 
   const level = getAutonomyLevel(event, autonomy);
   const base = formatEventBase(event, prTitle);
 
+  // Another agent claimed this event — downgrade to notify
+  if (event.claimedByOther) return `${base} (being handled by another session)`;
+
   if (level === 'notify') return base;
 
   const suggestion = SUGGESTIONS[event.type];
@@ -890,6 +895,20 @@ export default {
       const events = detectEvents(key, pr, data, staleDays, staleTtlDays);
       allEvents.push(...events);
       state.prs[key] = updatePRState(pr, data, events);
+    }
+
+    // Claim actionable events to prevent duplicate work across sessions
+    if (context.claims) {
+      for (const event of allEvents) {
+        const level = getAutonomyLevel(event, autonomy);
+        if (level === 'act' || level === 'suggest') {
+          const claimKey = `${event.pr}:${event.type}`;
+          const { claimed } = await context.claims.tryClaim(claimKey);
+          if (!claimed) {
+            event.claimedByOther = true;
+          }
+        }
+      }
     }
 
     // Format output

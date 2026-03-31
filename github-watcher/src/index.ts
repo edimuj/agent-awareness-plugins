@@ -409,6 +409,24 @@ export default {
       );
     }
 
+    // Claim repo activity to prevent duplicate action across concurrent sessions
+    if (context.claims) {
+      const claimedActivities: RepoActivity[] = [];
+      for (const activity of activities) {
+        const hasActivity = activity.newIssues.length || activity.newPRs.length || activity.newComments.length;
+        if (!hasActivity) { claimedActivities.push(activity); continue; }
+
+        const claimKey = `${activity.repo}:activity:${newState.lastCheck}`;
+        const { claimed } = await context.claims.tryClaim(claimKey, 20);
+        if (claimed) {
+          claimedActivities.push(activity);
+        }
+        // Unclaimed repos are silently dropped — another session reports them
+      }
+      activities.length = 0;
+      activities.push(...claimedActivities);
+    }
+
     // Determine format
     const triggerFormat = config.triggers?.[trigger as string];
     const format = typeof triggerFormat === 'string'
