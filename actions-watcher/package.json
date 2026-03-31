@@ -1,0 +1,31 @@
+{
+  "name": "agent-awareness-plugin-actions-watcher",
+  "version": "0.1.0",
+  "description": "GitHub Actions workflow monitor for agent-awareness — reports failures and recoveries",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "main": "./index.js",
+  "files": ["index.js", "src/**/*.js", "src/**/*.d.ts", "README.md"],
+  "scripts": {
+    "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
+  },
+  "keywords": [
+    "agent-awareness",
+    "plugin",
+    "github",
+    "actions",
+    "ci",
+    "workflow"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edimuj/agent-awareness-plugins.git",
+    "directory": "actions-watcher"
+  },
+  "peerDependencies": {
+    "agent-awareness": ">=0.4.0"
+  }
+}
