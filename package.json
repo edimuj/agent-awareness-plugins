@@ -10,7 +10,8 @@
   "workspaces": [
     "github-watcher",
     "server-health",
-    "pr-pilot"
+    "pr-pilot",
+    "claim-debugger"
   ],
   "devDependencies": {
     "@types/node": "^25.5.0",

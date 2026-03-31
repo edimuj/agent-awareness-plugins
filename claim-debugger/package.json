@@ -1,0 +1,27 @@
+{
+  "name": "agent-awareness-plugin-claim-debugger",
+  "version": "0.1.0",
+  "description": "Debug and test the multi-agent event claiming system — simulate events, inspect claims, force contention",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "main": "./index.ts",
+  "keywords": [
+    "agent-awareness",
+    "plugin",
+    "debug",
+    "claims",
+    "testing",
+    "multi-agent"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edimuj/agent-awareness-plugins.git",
+    "directory": "claim-debugger"
+  },
+  "peerDependencies": {
+    "agent-awareness": ">=0.3.0"
+  }
+}
