@@ -11,10 +11,15 @@
   },
   "workspaces": [
     "actions-watcher",
+    "energy-curve",
+    "focus-timer",
     "github-watcher",
+    "quota",
     "server-health",
     "pr-pilot",
-    "claim-debugger"
+    "claim-debugger",
+    "system",
+    "weather"
   ],
   "devDependencies": {
     "@types/node": "^25.5.0",

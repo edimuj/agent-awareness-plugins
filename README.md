@@ -6,6 +6,11 @@ Community provider plugins for [agent-awareness](https://github.com/edimuj/agent
 
 | Plugin | Description | npm |
 |--------|-------------|-----|
+| [energy-curve](./energy-curve/) | Adapts agent style to user energy rhythm by hour/profile | `agent-awareness-plugin-energy-curve` |
+| [focus-timer](./focus-timer/) | Pomodoro focus timer with MCP controls | `agent-awareness-plugin-focus-timer` |
+| [quota](./quota/) | Provider-aware quota visibility for Claude/Codex | `agent-awareness-plugin-quota` |
+| [system](./system/) | Disk, memory, and load threshold warnings | `agent-awareness-plugin-system` |
+| [weather](./weather/) | Local weather context via Open-Meteo | `agent-awareness-plugin-weather` |
 | [github-watcher](./github-watcher/) | Monitors GitHub repos for new issues, PRs, and comments | `agent-awareness-plugin-github-watcher` |
 | [server-health](./server-health/) | Threshold-based server alerts with hysteresis and cooldown | `agent-awareness-plugin-server-health` |
 | [pr-pilot](./pr-pilot/) | Tracks outbound PRs — detects CI failures, reviews, conflicts, staleness | `agent-awareness-plugin-pr-pilot` |
@@ -21,6 +26,11 @@ npm install -g agent-awareness-plugin-server-health
 npm install -g agent-awareness-plugin-pr-pilot
 npm install -g agent-awareness-plugin-actions-watcher
 npm install -g agent-awareness-plugin-claim-debugger
+npm install -g agent-awareness-plugin-energy-curve
+npm install -g agent-awareness-plugin-focus-timer
+npm install -g agent-awareness-plugin-quota
+npm install -g agent-awareness-plugin-system
+npm install -g agent-awareness-plugin-weather
 ```
 
 The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.

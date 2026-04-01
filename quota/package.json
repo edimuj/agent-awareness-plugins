@@ -1,0 +1,35 @@
+{
+  "name": "agent-awareness-plugin-quota",
+  "version": "0.1.0",
+  "description": "Provider-aware API quota plugin for agent-awareness (Claude and Codex)",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
+  },
+  "keywords": [
+    "agent-awareness",
+    "plugin",
+    "quota",
+    "rate-limit",
+    "usage"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edimuj/agent-awareness-plugins.git",
+    "directory": "quota"
+  },
+  "peerDependencies": {
+    "agent-awareness": ">=0.4.0"
+  }
+}

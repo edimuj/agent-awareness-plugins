@@ -1,0 +1,35 @@
+{
+  "name": "agent-awareness-plugin-system",
+  "version": "0.1.0",
+  "description": "System telemetry plugin for agent-awareness — disk, memory, and load warnings",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
+  },
+  "keywords": [
+    "agent-awareness",
+    "plugin",
+    "system",
+    "monitoring",
+    "ops"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edimuj/agent-awareness-plugins.git",
+    "directory": "system"
+  },
+  "peerDependencies": {
+    "agent-awareness": ">=0.4.0"
+  }
+}
