@@ -1,6 +1,6 @@
 {
   "name": "agent-awareness-plugin-pr-pilot",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "PR lifecycle manager for agent-awareness — tracks outbound PRs, detects events, frames agent actions",
   "type": "module",
   "exports": {

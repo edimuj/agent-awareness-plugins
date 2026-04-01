@@ -425,10 +425,13 @@ async function fetchPRData(
     for (const r of reviewNodes) {
       const login = r.author?.login;
       if (!login) continue;
-      byReviewer[login] = {
-        state: r.state as ReviewEntry['state'],
-        updatedAt: r.submittedAt,
-      };
+      const existing = byReviewer[login];
+      if (!existing || r.submittedAt > existing.updatedAt) {
+        byReviewer[login] = {
+          state: r.state as ReviewEntry['state'],
+          updatedAt: r.submittedAt,
+        };
+      }
     }
 
     // Parse unresolved review threads
@@ -482,6 +485,8 @@ function detectEvents(
   staleTtlDays: number,
 ): PREvent[] {
   const events: PREvent[] = [];
+  const prevFailureSignature = prev.checks.failed.map((f) => `${f.name}:${f.details}`).sort().join('|');
+  const nextFailureSignature = data.checks.failed.map((f) => `${f.name}:${f.details}`).sort().join('|');
 
   // Terminal states
   if (data.ghState === 'MERGED' && prev.status === 'open') {
@@ -494,7 +499,14 @@ function detectEvents(
   }
 
   // CI checks
-  if (data.checks.conclusion === 'failure' && prev.checks.conclusion !== 'failure') {
+  if (
+    data.checks.conclusion === 'failure'
+    && (
+      prev.checks.conclusion !== 'failure'
+      || data.checks.updatedAt > prev.checks.updatedAt
+      || nextFailureSignature !== prevFailureSignature
+    )
+  ) {
     const details = data.checks.failed.map((f) => f.name).join(', ');
     events.push({ type: 'checks_failed', pr: key, details: `${data.checks.failed.length} failed: ${details}` });
   }
@@ -569,6 +581,36 @@ function getAutonomyLevel(event: PREvent, autonomy: AutonomyConfig): AutonomyLev
     case 'label_added': return autonomy.labels;
     default: return 'notify';
   }
+}
+
+function eventClaimFingerprint(event: PREvent, pr: PRState | undefined): string {
+  if (!pr) return event.details ?? '';
+
+  if (event.type === 'checks_failed' || event.type === 'checks_passed') {
+    const failed = pr.checks.failed.map((f) => `${f.name}:${f.details}`).sort().join('|');
+    return `${pr.checks.updatedAt}|${pr.checks.conclusion ?? 'none'}|${failed}`;
+  }
+
+  if (
+    event.type === 'review_requested_changes'
+    || event.type === 'review_commented'
+    || event.type === 'review_approved'
+  ) {
+    return Object.entries(pr.reviews.byReviewer)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([reviewer, entry]) => `${reviewer}:${entry.state}:${entry.updatedAt}`)
+      .join('|');
+  }
+
+  if (event.type === 'label_added') {
+    return `${event.details ?? ''}|${pr.lastActivityAt}`;
+  }
+
+  return `${pr.status}|${pr.lastActivityAt}|${event.details ?? ''}`;
+}
+
+function eventClaimKey(event: PREvent, pr: PRState | undefined): string {
+  return `${event.pr}:${event.type}:${eventClaimFingerprint(event, pr)}`;
 }
 
 const SUGGESTIONS: Record<string, string> = {
@@ -815,6 +857,7 @@ export default {
       lastDiscovery: '',
       resolvedUsername: '',
     };
+    const allEvents: PREvent[] = [];
 
     // Resolve username
     if (!state.resolvedUsername) {
@@ -867,9 +910,18 @@ export default {
         if (pr.source === 'auto' && !discoveredKeys.has(key)) {
           // PR was closed/merged externally — fetch to confirm
           const data = await fetchPRData(pr.repo, pr.number, log, signal);
-          if (!data || data.ghState !== 'OPEN') {
-            delete state.prs[key];
+          if (!data) continue;
+          if (data.ghState === 'OPEN') {
+            state.prs[key] = updatePRState(pr, data, []);
+            continue;
           }
+
+          const terminalEvent: PREvent = {
+            type: data.ghState === 'MERGED' ? 'pr_merged' : 'pr_closed',
+            pr: key,
+          };
+          allEvents.push(terminalEvent);
+          state.prs[key] = updatePRState(pr, data, [terminalEvent]);
         }
       }
     }
@@ -878,7 +930,6 @@ export default {
     state.cycle = (state.cycle + 1);
 
     // Fetch data and detect events for tracked PRs
-    const allEvents: PREvent[] = [];
     const prEntries = Object.entries(state.prs);
 
     for (const [key, pr] of prEntries) {
@@ -902,7 +953,7 @@ export default {
       for (const event of allEvents) {
         const level = getAutonomyLevel(event, autonomy);
         if (level === 'act' || level === 'suggest') {
-          const claimKey = `${event.pr}:${event.type}`;
+          const claimKey = eventClaimKey(event, state.prs[event.pr]);
           const { claimed } = await context.claims.tryClaim(claimKey);
           if (!claimed) {
             event.claimedByOther = true;

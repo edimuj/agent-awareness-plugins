@@ -156,9 +156,10 @@ function shouldAlert(
   metricState: MetricState,
   cooldownSeconds: number,
 ): boolean {
-  // Always alert on transitions
-  if (reading.transition !== 'none') {
-    // But check cooldown
+  if (reading.transition === 'recovered') {
+    return true;
+  }
+  if (reading.transition === 'escalated') {
     if (metricState.lastAlertAt) {
       const elapsed = (Date.now() - new Date(metricState.lastAlertAt).getTime()) / 1000;
       if (elapsed < cooldownSeconds) return false;
@@ -204,7 +205,7 @@ async function collectAllMetrics(
   prevState: HealthState | null,
   signal?: AbortSignal,
 ): Promise<{ readings: MetricReading[]; newState: HealthState }> {
-  const metricsConfig = (config.metrics ?? {}) as Record<string, MetricConfig>;
+  const metricsConfig = (config.metrics ?? {}) as Record<string, Partial<MetricConfig>>;
   const diskPaths = (config.diskPaths as string[]) ?? ['/'];
   const now = new Date().toISOString();
 
@@ -225,7 +226,7 @@ async function collectAllMetrics(
     const prev = state.metrics[key] ?? { status: 'normal' as MetricStatus, since: now, lastAlertAt: '', lastAlertValue: 0 };
     const status = evaluateStatus(value, mc.thresholds, prev.status);
     const transition: MetricReading['transition'] = status !== prev.status
-      ? (status === 'normal' ? 'recovered' : 'escalated')
+      ? (statusSeverity(status) > statusSeverity(prev.status) ? 'escalated' : 'recovered')
       : 'none';
 
     const reading: MetricReading = {
@@ -245,7 +246,7 @@ async function collectAllMetrics(
 
   // Disk
   if (metricsConfig.disk?.enabled) {
-    const mc = { ...defaultMetricConfig, ...metricsConfig.disk };
+    const mc = mergeMetricConfig(defaultMetricConfig, metricsConfig.disk);
     for (const diskPath of diskPaths) {
       try {
         const value = await collectDiskUsage(diskPath);
@@ -256,31 +257,31 @@ async function collectAllMetrics(
 
   // Memory
   if (metricsConfig.memory?.enabled) {
-    const mc = { ...defaultMetricConfig, ...metricsConfig.memory };
+    const mc = mergeMetricConfig(defaultMetricConfig, metricsConfig.memory);
     collectReading('memory', 'Memory', collectMemoryUsage(), '%', mc);
   }
 
   // Swap
   if (metricsConfig.swap?.enabled) {
-    const mc = { ...defaultMetricConfig, ...metricsConfig.swap };
+    const mc = mergeMetricConfig(swapMetricDefaults, metricsConfig.swap);
     collectReading('swap', 'Swap', await collectSwapUsage(signal), '%', mc);
   }
 
   // Load
   if (metricsConfig.load?.enabled) {
-    const mc = { ...defaultMetricConfig, ...metricsConfig.load };
+    const mc = mergeMetricConfig(loadMetricDefaults, metricsConfig.load);
     collectReading('load', 'CPU Load', collectLoadAvg(), '% (per-CPU)', mc);
   }
 
   // Open files
   if (metricsConfig.openFiles?.enabled) {
-    const mc = { ...defaultMetricConfig, ...metricsConfig.openFiles };
+    const mc = mergeMetricConfig(openFilesMetricDefaults, metricsConfig.openFiles);
     collectReading('openFiles', 'Open Files', await collectOpenFiles(signal), '%', mc);
   }
 
   // Docker
   if (metricsConfig.docker?.enabled) {
-    const mc = { ...defaultMetricConfig, ...metricsConfig.docker };
+    const mc = mergeMetricConfig(dockerMetricDefaults, metricsConfig.docker);
     const docker = await collectDockerHealth(signal);
     const value = docker.unhealthy.length;
     const label = value > 0
@@ -318,6 +319,50 @@ const defaultMetricConfig: MetricConfig = {
   cooldownSeconds: 300,
 };
 
+const swapMetricDefaults: MetricConfig = {
+  ...defaultMetricConfig,
+  thresholds: { warning: 60, critical: 80, hysteresis: 10 },
+};
+
+const loadMetricDefaults: MetricConfig = {
+  ...defaultMetricConfig,
+  thresholds: { warning: 150, critical: 250, hysteresis: 20 },
+  cooldownSeconds: 120,
+};
+
+const openFilesMetricDefaults: MetricConfig = {
+  enabled: true,
+  thresholds: { warning: 70, critical: 85, hysteresis: 5 },
+  cooldownSeconds: 300,
+};
+
+const dockerMetricDefaults: MetricConfig = {
+  enabled: true,
+  thresholds: { warning: 1, critical: 3, hysteresis: 1 },
+  cooldownSeconds: 300,
+};
+
+function mergeMetricConfig(
+  defaults: MetricConfig,
+  override?: Partial<MetricConfig>,
+): MetricConfig {
+  const thresholdsOverride = (override?.thresholds ?? {}) as Partial<ThresholdConfig>;
+  return {
+    ...defaults,
+    ...override,
+    thresholds: {
+      ...defaults.thresholds,
+      ...thresholdsOverride,
+    },
+  };
+}
+
+function statusSeverity(status: MetricStatus): number {
+  if (status === 'critical') return 2;
+  if (status === 'warning') return 1;
+  return 0;
+}
+
 export default {
   name: 'server-health',
   description: 'Server health threshold alerts with hysteresis and cooldown — only reports state changes',
@@ -333,23 +378,16 @@ export default {
       disk: { ...defaultMetricConfig },
       memory: { ...defaultMetricConfig },
       swap: {
-        ...defaultMetricConfig,
-        thresholds: { warning: 60, critical: 80, hysteresis: 10 },
+        ...swapMetricDefaults,
       },
       load: {
-        ...defaultMetricConfig,
-        thresholds: { warning: 150, critical: 250, hysteresis: 20 },
-        cooldownSeconds: 120,
+        ...loadMetricDefaults,
       },
       openFiles: {
-        enabled: true,
-        thresholds: { warning: 70, critical: 85, hysteresis: 5 },
-        cooldownSeconds: 300,
+        ...openFilesMetricDefaults,
       },
       docker: {
-        enabled: true,
-        thresholds: { warning: 1, critical: 3, hysteresis: 1 },
-        cooldownSeconds: 300,
+        ...dockerMetricDefaults,
       },
     },
     triggers: {

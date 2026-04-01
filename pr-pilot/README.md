@@ -148,7 +148,7 @@ This ensures PRs don't accumulate forever in state.
 ## Requirements
 
 - `gh` CLI installed and authenticated
-- agent-awareness v0.2.0+
+- agent-awareness v0.4.0+
 
 ## License
 

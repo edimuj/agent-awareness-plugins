@@ -89,6 +89,7 @@ async function fetchNewIssues(
   repo: string,
   since: string,
   ignoreAuthors: Set<string>,
+  limit: number,
   log: Log,
   signal?: AbortSignal,
 ): Promise<GHItem[]> {
@@ -96,16 +97,36 @@ async function fetchNewIssues(
     'issue', 'list',
     '-R', repo,
     '--json', 'number,title,author,createdAt,url,state',
-    '--limit', '20',
+    '--limit', String(limit),
     '-s', 'all',
   ], log, signal);
   if (!json) return [];
   try {
-    const items: GHItem[] = JSON.parse(json);
-    return items.filter(
-      (i) => !ignoreAuthors.has(i.author.login.toLowerCase())
-        && i.createdAt > since,
-    );
+    const items: Array<Partial<GHItem> & { author?: { login?: string } | null }> = JSON.parse(json);
+    return items
+      .flatMap((i): GHItem[] => {
+        if (
+          typeof i.number !== 'number'
+          || typeof i.title !== 'string'
+          || typeof i.createdAt !== 'string'
+          || typeof i.url !== 'string'
+        ) {
+          return [];
+        }
+        return [{
+          number: i.number,
+          title: i.title,
+          author: { login: i.author?.login ?? 'unknown' },
+          createdAt: i.createdAt,
+          url: i.url,
+          state: i.state,
+          isDraft: i.isDraft,
+        }];
+      })
+      .filter(
+        (i) => !ignoreAuthors.has(i.author.login.toLowerCase())
+          && i.createdAt > since,
+      );
   } catch { return []; }
 }
 
@@ -113,6 +134,7 @@ async function fetchNewPRs(
   repo: string,
   since: string,
   ignoreAuthors: Set<string>,
+  limit: number,
   log: Log,
   signal?: AbortSignal,
 ): Promise<GHItem[]> {
@@ -120,16 +142,36 @@ async function fetchNewPRs(
     'pr', 'list',
     '-R', repo,
     '--json', 'number,title,author,createdAt,url,state,isDraft',
-    '--limit', '20',
+    '--limit', String(limit),
     '-s', 'all',
   ], log, signal);
   if (!json) return [];
   try {
-    const items: GHItem[] = JSON.parse(json);
-    return items.filter(
-      (i) => !ignoreAuthors.has(i.author.login.toLowerCase())
-        && i.createdAt > since,
-    );
+    const items: Array<Partial<GHItem> & { author?: { login?: string } | null }> = JSON.parse(json);
+    return items
+      .flatMap((i): GHItem[] => {
+        if (
+          typeof i.number !== 'number'
+          || typeof i.title !== 'string'
+          || typeof i.createdAt !== 'string'
+          || typeof i.url !== 'string'
+        ) {
+          return [];
+        }
+        return [{
+          number: i.number,
+          title: i.title,
+          author: { login: i.author?.login ?? 'unknown' },
+          createdAt: i.createdAt,
+          url: i.url,
+          state: i.state,
+          isDraft: i.isDraft,
+        }];
+      })
+      .filter(
+        (i) => !ignoreAuthors.has(i.author.login.toLowerCase())
+          && i.createdAt > since,
+      );
   } catch { return []; }
 }
 
@@ -226,13 +268,15 @@ async function fetchRepoActivity(
   repo: string,
   repoState: RepoState,
   ignoreAuthors: Set<string>,
+  issueLimit: number,
+  prLimit: number,
   commentLimit: number,
   log: Log,
   signal?: AbortSignal,
 ): Promise<RepoActivity> {
   const [newIssues, newPRs, newComments] = await Promise.all([
-    fetchNewIssues(repo, repoState.lastIssueAt, ignoreAuthors, log, signal),
-    fetchNewPRs(repo, repoState.lastPrAt, ignoreAuthors, log, signal),
+    fetchNewIssues(repo, repoState.lastIssueAt, ignoreAuthors, issueLimit, log, signal),
+    fetchNewPRs(repo, repoState.lastPrAt, ignoreAuthors, prLimit, log, signal),
     fetchRecentComments(repo, repoState.lastCommentAt, ignoreAuthors, commentLimit, log, signal),
   ]);
 
@@ -280,6 +324,19 @@ function updateRepoState(prev: RepoState, activity: RepoActivity): RepoState {
   }
 
   return state;
+}
+
+function buildActivityClaimKey(activity: RepoActivity): string {
+  const issues = activity.newIssues
+    .map((i) => `i${i.number}@${i.createdAt}`)
+    .sort();
+  const prs = activity.newPRs
+    .map((p) => `p${p.number}@${p.createdAt}`)
+    .sort();
+  const comments = activity.newComments
+    .map((c) => `c${c.url}@${c.createdAt}`)
+    .sort();
+  return `${activity.repo}:activity:${[...issues, ...prs, ...comments].join('|')}`;
 }
 
 // ── Formatters ─────────────────────────────────────────────────────────────
@@ -349,6 +406,10 @@ export default {
     ignoreAuthors: [] as string[],
     /** Max comments to fetch per repo per check */
     commentLimit: 10,
+    /** Max issues to fetch per repo per check */
+    issueLimit: 50,
+    /** Max PRs to fetch per repo per check */
+    prLimit: 50,
     /** Output format: 'compact' for interval, 'detailed' for session-start */
     format: 'auto',
     /** Only inject when there's new activity (true = silent when nothing new) */
@@ -374,6 +435,8 @@ export default {
       ((config.ignoreAuthors as string[]) ?? []).map((u) => u.toLowerCase()),
     );
     const commentLimit = (config.commentLimit as number) ?? 10;
+    const issueLimit = (config.issueLimit as number) ?? 50;
+    const prLimit = (config.prLimit as number) ?? 50;
     const onlyWhenNew = config.onlyWhenNew !== false;
 
     // Restore state
@@ -392,7 +455,7 @@ export default {
     // Fetch activity for all repos in parallel
     const activities = await Promise.all(
       repos.map((repo) =>
-        fetchRepoActivity(repo, state.repos[repo]!, ignoreAuthors, commentLimit, log, signal)
+        fetchRepoActivity(repo, state.repos[repo]!, ignoreAuthors, issueLimit, prLimit, commentLimit, log, signal)
           .catch((): RepoActivity => ({ repo, newIssues: [], newPRs: [], newComments: [] })),
       ),
     );
@@ -416,7 +479,7 @@ export default {
         const hasActivity = activity.newIssues.length || activity.newPRs.length || activity.newComments.length;
         if (!hasActivity) { claimedActivities.push(activity); continue; }
 
-        const claimKey = `${activity.repo}:activity:${newState.lastCheck}`;
+        const claimKey = buildActivityClaimKey(activity);
         const { claimed } = await context.claims.tryClaim(claimKey, 20);
         if (claimed) {
           claimedActivities.push(activity);
@@ -484,6 +547,8 @@ export default {
             ((config.ignoreAuthors as string[]) ?? []).map((u) => u.toLowerCase()),
           );
           const commentLimit = (config.commentLimit as number) ?? 10;
+          const issueLimit = (config.issueLimit as number) ?? 50;
+          const prLimit = (config.prLimit as number) ?? 50;
 
           const state = (prevState as WatcherState | null) ?? {
             repos: {},
@@ -515,7 +580,7 @@ export default {
 
           const activities = await Promise.all(
             repos.map((repo) =>
-              fetchRepoActivity(repo, checkState.repos[repo]!, ignoreAuthors, commentLimit, log, signal)
+              fetchRepoActivity(repo, checkState.repos[repo]!, ignoreAuthors, issueLimit, prLimit, commentLimit, log, signal)
                 .catch((): RepoActivity => ({ repo, newIssues: [], newPRs: [], newComments: [] })),
             ),
           );

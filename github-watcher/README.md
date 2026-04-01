@@ -31,6 +31,8 @@ Create `~/.config/agent-awareness/plugins.d/github-watcher.json`:
     "owner/repo2"
   ],
   "ignoreAuthors": ["your-github-username", "dependabot[bot]"],
+  "issueLimit": 50,
+  "prLimit": 50,
   "commentLimit": 10,
   "onlyWhenNew": true,
   "triggers": {
@@ -46,6 +48,8 @@ Create `~/.config/agent-awareness/plugins.d/github-watcher.json`:
 |--------|------|---------|-------------|
 | `repos` | `string[]` | `[]` | Repos to watch (`owner/repo` format) |
 | `ignoreAuthors` | `string[]` | `[]` | GitHub usernames to filter out |
+| `issueLimit` | `number` | `50` | Max issues fetched per repo per check |
+| `prLimit` | `number` | `50` | Max PRs fetched per repo per check |
 | `commentLimit` | `number` | `10` | Max comments per repo per check |
 | `format` | `string` | `"auto"` | Output format: `compact`, `detailed`, or `auto` |
 | `onlyWhenNew` | `boolean` | `true` | Only inject when there's new activity |
@@ -84,7 +88,7 @@ GitHub activity:
 ## Requirements
 
 - `gh` CLI installed and authenticated
-- agent-awareness v0.1.0+
+- agent-awareness v0.4.0+
 
 ## License
 
