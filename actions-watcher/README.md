@@ -4,11 +4,13 @@ An [agent-awareness](https://github.com/edimuj/agent-awareness) plugin that moni
 
 ## Features
 
+- **Auto-discovery** — set `owner` to automatically find all repos with workflows
+- **Stale filtering** — `maxAgeDays` silences old/inactive projects
 - **Delta-only reporting** — only reports state changes (new failures, recoveries)
 - **Private repo support** — uses `gh` CLI authentication
 - **Parallel fetching** — checks all repos concurrently
 - **Workflow & branch filtering** — focus on the workflows that matter
-- **MCP tools** — on-demand `check` and `runs` for real-time queries
+- **MCP tools** — on-demand `check`, `discover`, and `runs` for real-time queries
 - **Silent when green** — zero tokens wasted when everything passes
 
 ## Installation
@@ -37,44 +39,76 @@ Or globally:
 ~/.config/agent-awareness/plugins.d/actions-watcher.json
 ```
 
+### Auto-discovery (recommended)
+
+```json
+{
+  "owner": "your-github-username",
+  "maxAgeDays": 14
+}
+```
+
+On each session start, the plugin lists all repos for the owner, checks which ones have workflow runs, and watches them automatically. Repos with only stale runs (older than `maxAgeDays`) produce no output.
+
+### Explicit repos
+
 ```json
 {
   "repos": [
     "edimuj/app-chat-game",
     "edimuj/my-private-api"
   ],
-  "workflowFilter": [],
-  "branchFilter": ["main"],
-  "limit": 10
+  "maxAgeDays": 30,
+  "branchFilter": ["main"]
 }
 ```
 
+You can combine both — `owner` discovers repos, `repos` adds extras.
+
 | Option | Default | Description |
 |--------|---------|-------------|
-| `repos` | `[]` | Repos to monitor (`owner/name`). Empty = plugin stays silent |
+| `owner` | `""` | GitHub owner for auto-discovery. Empty = discovery disabled |
+| `repos` | `[]` | Explicit repos to monitor (`owner/name`). Merged with discovered repos |
+| `maxAgeDays` | `14` | Ignore workflow runs older than this many days |
+| `autonomy` | `"report"` | `"report"` = inform only, `"full"` = directive to fix and monitor |
 | `workflowFilter` | `[]` | Workflow name substrings to include. Empty = all workflows |
 | `branchFilter` | `[]` | Only report runs on these branches. Empty = all branches |
 | `limit` | `10` | How many recent runs to fetch per repo |
 
 ## Output
 
-**Session start** — full status of all watched workflows:
+**Session start** — failing workflows only (passing is silent):
 ```
-edimuj/app-chat-game: 2 workflows — all green
-  ✅ push (main): passing — 2h ago
-  ✅ nightly-e2e (main): passing — 8h ago
+edimuj/app-chat-game: 1 failing workflows
+  iOS Maestro Nightly Matrix (main): FAILED — 2h ago
 ```
 
-**Interval** — delta only (failures and recoveries):
+**Interval** — failures and recoveries only:
 ```
-🔴 FAILED: edimuj/app-chat-game / nightly-e2e (main, schedule, 5m ago)
+FAILED: edimuj/app-chat-game / nightly-e2e (main, schedule, 5m ago)
+RECOVERED: edimuj/app-chat-game / nightly-e2e (main, 2m ago)
 ```
+
+### Autonomy levels
+
+With `"autonomy": "full"`, the plugin appends actionable directives:
+```
+edimuj/app-chat-game: 1 failing workflows
+  nightly-e2e (main): FAILED — 2h ago. Action required: clone the repo, check the workflow logs (gh run view), identify the failure cause, fix it, push, and monitor until the run passes.
+```
+
+With `"autonomy": "report"` (default), the agent is only informed — no action directives.
+
+## Multi-agent coordination
+
+When multiple Claude Code sessions are running concurrently, the plugin claims each repo's workflow batch so only one session reports it. Unclaimed repos are silently skipped — another session handles them. State is always updated for all repos regardless of claim ownership, keeping delta tracking accurate.
 
 ## MCP Tools
 
 | Tool | Description |
 |------|-------------|
 | `awareness_actions_watcher_check` | Force re-check all repos (or one specific repo) |
+| `awareness_actions_watcher_discover` | Re-discover repos with workflows, shows what's being watched |
 | `awareness_actions_watcher_runs` | List recent workflow runs for a repo |
 
 ## License
