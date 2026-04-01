@@ -1,13 +1,18 @@
 {
   "name": "agent-awareness-plugin-actions-watcher",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "GitHub Actions workflow monitor for agent-awareness — reports failures and recoveries",
   "type": "module",
   "exports": {
     ".": "./index.js"
   },
   "main": "./index.js",
-  "files": ["index.js", "src/**/*.js", "src/**/*.d.ts", "README.md"],
+  "files": [
+    "index.js",
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "README.md"
+  ],
   "scripts": {
     "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
   },

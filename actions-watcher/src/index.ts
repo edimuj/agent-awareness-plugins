@@ -221,7 +221,7 @@ function detectChanges(
 
     // New run — check for state changes
     if (conclusion === 'failure') {
-      const wasOk = !prev || prev.conclusion === 'success';
+      const wasOk = !prev || prev.conclusion !== 'failure';
       const prefix = wasOk ? 'FAILED' : 'still failing';
       let line = `${prefix}: ${repo} / ${wfName} (${run.headBranch}, ${run.event}, ${timeAgo(run.updatedAt)})`;
       if (autonomy === 'full') line += `. ${wasOk ? DIRECTIVES.failed : DIRECTIVES.still_failing}`;
@@ -261,6 +261,29 @@ function formatSessionStart(
   if (lines.length === 0) return [];
 
   return [`${repo}: ${lines.length} failing workflows`, ...lines];
+}
+
+function buildRepoStateFromLatest(
+  latestRuns: Map<string, WorkflowRun>,
+  prevRepoState: RepoState | undefined,
+): RepoState {
+  const workflows: Record<string, WorkflowStatus> = {};
+  let maxRunId = prevRepoState?.lastCheckedRunId ?? 0;
+
+  for (const [wfName, run] of latestRuns) {
+    workflows[wfName] = {
+      workflowName: wfName,
+      conclusion: run.conclusion ?? 'unknown',
+      runId: run.databaseId,
+      branch: run.headBranch,
+      event: run.event,
+      updatedAt: run.updatedAt,
+      url: run.url,
+    };
+    if (run.databaseId > maxRunId) maxRunId = run.databaseId;
+  }
+
+  return { workflows, lastCheckedRunId: maxRunId };
 }
 
 // --- Plugin ---
@@ -353,22 +376,7 @@ export default {
     for (const { repo, latest } of claimedResults) {
       if (isSessionStart) {
         allLines.push(...formatSessionStart(repo, latest, autonomy));
-
-        const workflows: Record<string, WorkflowStatus> = {};
-        let maxRunId = 0;
-        for (const [wfName, run] of latest) {
-          workflows[wfName] = {
-            workflowName: wfName,
-            conclusion: run.conclusion ?? 'unknown',
-            runId: run.databaseId,
-            branch: run.headBranch,
-            event: run.event,
-            updatedAt: run.updatedAt,
-            url: run.url,
-          };
-          if (run.databaseId > maxRunId) maxRunId = run.databaseId;
-        }
-        state.repos[repo] = { workflows, lastCheckedRunId: maxRunId };
+        state.repos[repo] = buildRepoStateFromLatest(latest, prevState?.repos[repo]);
       } else {
         // Delta mode — only report changes
         const { lines, newState } = detectChanges(repo, latest, prevState?.repos[repo], autonomy);
@@ -379,23 +387,7 @@ export default {
 
     // Always update state for all fetched repos (even unclaimed ones)
     for (const { repo, latest } of results) {
-      if (!state.repos[repo] && latest.size > 0) {
-        const workflows: Record<string, WorkflowStatus> = {};
-        let maxRunId = 0;
-        for (const [wfName, run] of latest) {
-          workflows[wfName] = {
-            workflowName: wfName,
-            conclusion: run.conclusion ?? 'unknown',
-            runId: run.databaseId,
-            branch: run.headBranch,
-            event: run.event,
-            updatedAt: run.updatedAt,
-            url: run.url,
-          };
-          if (run.databaseId > maxRunId) maxRunId = run.databaseId;
-        }
-        state.repos[repo] = { workflows, lastCheckedRunId: maxRunId };
-      }
+      state.repos[repo] = buildRepoStateFromLatest(latest, state.repos[repo]);
     }
 
     // Clean up state for repos no longer watched
@@ -404,7 +396,9 @@ export default {
       if (!repoSet.has(key)) delete state.repos[key];
     }
 
-    if (allLines.length === 0) return null;
+    if (allLines.length === 0) {
+      return { text: '', state };
+    }
 
     return { text: allLines.join('\n'), state };
   },
@@ -530,7 +524,7 @@ export default {
               description: 'Repository (owner/name) — required',
             },
             limit: {
-              type: 'number',
+              type: 'number' as const,
               description: 'Number of runs to show (default: 10)',
             },
           },
