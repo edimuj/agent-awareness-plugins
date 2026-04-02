@@ -69,6 +69,18 @@ function makeLog(ctx?: { log?: Log }): Log {
   return ctx?.log ?? { warn: console.error, error: console.error };
 }
 
+function focusSessionRepo(repos: string[], config: PluginConfig, context: GatherContext): string[] {
+  if (config.focusCurrentRepo === false) return repos;
+
+  const sessionRepo = typeof context.sessionRepo === 'string'
+    ? context.sessionRepo.trim().toLowerCase()
+    : '';
+  if (!sessionRepo) return repos;
+
+  const matched = repos.find((repo) => repo.toLowerCase() === sessionRepo);
+  return matched ? [matched] : repos;
+}
+
 async function gh(args: string[], log: Log, signal?: AbortSignal): Promise<string> {
   try {
     const { stdout } = await exec('gh', args, {
@@ -414,6 +426,8 @@ export default {
     format: 'auto',
     /** Only inject when there's new activity (true = silent when nothing new) */
     onlyWhenNew: true,
+    /** Limit reporting to the active session repo when context.sessionRepo is available. */
+    focusCurrentRepo: true,
     triggers: {
       'session-start': 'detailed',
       'interval:15m': 'compact',
@@ -426,8 +440,9 @@ export default {
     prevState: WatcherState | null,
     context: GatherContext,
   ): Promise<GatherResult<WatcherState> | null> {
-    const repos = config.repos as string[];
-    if (!repos || repos.length === 0) return null;
+    const configuredRepos = (config.repos as string[]) ?? [];
+    if (!configuredRepos.length) return null;
+    const repos = focusSessionRepo(configuredRepos, config, context);
 
     const log = makeLog(context);
     const signal = context.signal;

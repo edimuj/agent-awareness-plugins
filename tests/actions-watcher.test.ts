@@ -168,6 +168,65 @@ test('actions-watcher should classify failure after cancelled as FAILED (not sti
   );
 });
 
+test('actions-watcher focuses reporting to current session repo by default', async () => {
+  await withFakeCommand(
+    'gh',
+    ghScriptForRunMap(
+      '[{"databaseId":201,"workflowName":"ci","name":"ci","status":"completed","conclusion":"failure","headBranch":"main","event":"push","createdAt":"2026-03-31T09:00:00Z","updatedAt":"2026-03-31T09:10:00Z","url":"https://example.com/repo1/201"}]',
+    ),
+    async () => {
+      const plugin = (await import(pluginUrl('actions-watcher/src/index.ts'))).default;
+      const result = await plugin.gather(
+        'session-start',
+        {
+          repos: ['alice/repo1', 'alice/repoB'],
+          maxAgeDays: 14,
+          autonomy: 'report',
+          workflowFilter: [],
+          branchFilter: [],
+          limit: 10,
+        },
+        null,
+        { ...testContext(), sessionRepo: 'alice/repo1' },
+      );
+
+      assert.ok(result);
+      assert.match(result.text, /alice\/repo1:/);
+      assert.doesNotMatch(result.text, /alice\/repoB:/);
+    },
+  );
+});
+
+test('actions-watcher can disable session-repo focus', async () => {
+  await withFakeCommand(
+    'gh',
+    ghScriptForRunMap(
+      '[{"databaseId":201,"workflowName":"ci","name":"ci","status":"completed","conclusion":"failure","headBranch":"main","event":"push","createdAt":"2026-03-31T09:00:00Z","updatedAt":"2026-03-31T09:10:00Z","url":"https://example.com/repo1/201"}]',
+    ),
+    async () => {
+      const plugin = (await import(pluginUrl('actions-watcher/src/index.ts'))).default;
+      const result = await plugin.gather(
+        'session-start',
+        {
+          repos: ['alice/repo1', 'alice/repoB'],
+          focusCurrentRepo: false,
+          maxAgeDays: 14,
+          autonomy: 'report',
+          workflowFilter: [],
+          branchFilter: [],
+          limit: 10,
+        },
+        null,
+        { ...testContext(), sessionRepo: 'alice/repo1' },
+      );
+
+      assert.ok(result);
+      assert.match(result.text, /alice\/repo1:/);
+      assert.match(result.text, /alice\/repoB:/);
+    },
+  );
+});
+
 test('actions-watcher d.ts should keep runs.limit input type as number', async () => {
   await exec('npm', ['run', 'build']);
   const dts = await readFile(new URL('../actions-watcher/src/index.d.ts', import.meta.url), 'utf8');

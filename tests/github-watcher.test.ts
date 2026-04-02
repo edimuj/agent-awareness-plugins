@@ -234,3 +234,170 @@ exit 1
     },
   );
 });
+
+test('github-watcher focuses reporting to current session repo by default', async () => {
+  await withFakeCommand(
+    'gh',
+    `
+if [[ "$1 $2" == "issue list" ]]; then
+  repo=''
+  prev=''
+  for arg in "$@"; do
+    if [[ "$prev" == "-R" ]]; then
+      repo="$arg"
+      break
+    fi
+    prev="$arg"
+  done
+  case "$repo" in
+    acme/ext)
+      cat <<'JSON'
+[{"number":1,"title":"Ext issue","author":{"login":"alice"},"createdAt":"2026-03-30T10:00:00Z","url":"https://github.com/acme/ext/issues/1","state":"OPEN"}]
+JSON
+      ;;
+    acme/other)
+      cat <<'JSON'
+[{"number":2,"title":"Other issue","author":{"login":"bob"},"createdAt":"2026-03-30T10:05:00Z","url":"https://github.com/acme/other/issues/2","state":"OPEN"}]
+JSON
+      ;;
+    *)
+      echo '[]'
+      ;;
+  esac
+  exit 0
+fi
+if [[ "$1 $2" == "pr list" ]]; then
+  echo '[]'
+  exit 0
+fi
+if [[ "$1 $2" == "api graphql" ]]; then
+  cat <<'JSON'
+{"data":{"repository":{"issueComments":{"nodes":[]},"prComments":{"nodes":[]}}}}
+JSON
+  exit 0
+fi
+echo "unexpected gh args: $*" >&2
+exit 1
+`,
+    async () => {
+      const plugin = (await import(pluginUrl('github-watcher/src/index.ts'))).default;
+      const result = await plugin.gather(
+        'interval:15m',
+        {
+          repos: ['acme/ext', 'acme/other'],
+          ignoreAuthors: [],
+          commentLimit: 10,
+          onlyWhenNew: true,
+        },
+        {
+          repos: {
+            'acme/ext': {
+              lastIssueId: 0,
+              lastPrId: 0,
+              lastIssueAt: '2026-03-01T00:00:00.000Z',
+              lastPrAt: '2026-03-01T00:00:00.000Z',
+              lastCommentAt: '2026-03-01T00:00:00.000Z',
+            },
+            'acme/other': {
+              lastIssueId: 0,
+              lastPrId: 0,
+              lastIssueAt: '2026-03-01T00:00:00.000Z',
+              lastPrAt: '2026-03-01T00:00:00.000Z',
+              lastCommentAt: '2026-03-01T00:00:00.000Z',
+            },
+          },
+          lastCheck: '2026-03-01T00:00:00.000Z',
+        },
+        { ...testContext(), sessionRepo: 'acme/ext' },
+      );
+
+      assert.ok(result);
+      assert.match(result.text, /acme\/ext:/);
+      assert.doesNotMatch(result.text, /acme\/other:/);
+    },
+  );
+});
+
+test('github-watcher can disable session-repo focus', async () => {
+  await withFakeCommand(
+    'gh',
+    `
+if [[ "$1 $2" == "issue list" ]]; then
+  repo=''
+  prev=''
+  for arg in "$@"; do
+    if [[ "$prev" == "-R" ]]; then
+      repo="$arg"
+      break
+    fi
+    prev="$arg"
+  done
+  case "$repo" in
+    acme/ext)
+      cat <<'JSON'
+[{"number":1,"title":"Ext issue","author":{"login":"alice"},"createdAt":"2026-03-30T10:00:00Z","url":"https://github.com/acme/ext/issues/1","state":"OPEN"}]
+JSON
+      ;;
+    acme/other)
+      cat <<'JSON'
+[{"number":2,"title":"Other issue","author":{"login":"bob"},"createdAt":"2026-03-30T10:05:00Z","url":"https://github.com/acme/other/issues/2","state":"OPEN"}]
+JSON
+      ;;
+    *)
+      echo '[]'
+      ;;
+  esac
+  exit 0
+fi
+if [[ "$1 $2" == "pr list" ]]; then
+  echo '[]'
+  exit 0
+fi
+if [[ "$1 $2" == "api graphql" ]]; then
+  cat <<'JSON'
+{"data":{"repository":{"issueComments":{"nodes":[]},"prComments":{"nodes":[]}}}}
+JSON
+  exit 0
+fi
+echo "unexpected gh args: $*" >&2
+exit 1
+`,
+    async () => {
+      const plugin = (await import(pluginUrl('github-watcher/src/index.ts'))).default;
+      const result = await plugin.gather(
+        'interval:15m',
+        {
+          repos: ['acme/ext', 'acme/other'],
+          ignoreAuthors: [],
+          commentLimit: 10,
+          onlyWhenNew: true,
+          focusCurrentRepo: false,
+        },
+        {
+          repos: {
+            'acme/ext': {
+              lastIssueId: 0,
+              lastPrId: 0,
+              lastIssueAt: '2026-03-01T00:00:00.000Z',
+              lastPrAt: '2026-03-01T00:00:00.000Z',
+              lastCommentAt: '2026-03-01T00:00:00.000Z',
+            },
+            'acme/other': {
+              lastIssueId: 0,
+              lastPrId: 0,
+              lastIssueAt: '2026-03-01T00:00:00.000Z',
+              lastPrAt: '2026-03-01T00:00:00.000Z',
+              lastCommentAt: '2026-03-01T00:00:00.000Z',
+            },
+          },
+          lastCheck: '2026-03-01T00:00:00.000Z',
+        },
+        { ...testContext(), sessionRepo: 'acme/ext' },
+      );
+
+      assert.ok(result);
+      assert.match(result.text, /acme\/ext:/);
+      assert.match(result.text, /acme\/other:/);
+    },
+  );
+});

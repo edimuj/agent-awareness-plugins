@@ -172,6 +172,22 @@ function getEffectiveRepos(
   return [...set].sort();
 }
 
+function focusSessionRepo(
+  repos: string[],
+  config: PluginConfig,
+  context: GatherContext,
+): string[] {
+  if (config.focusCurrentRepo === false) return repos;
+
+  const sessionRepo = typeof context.sessionRepo === 'string'
+    ? context.sessionRepo.trim().toLowerCase()
+    : '';
+  if (!sessionRepo) return repos;
+
+  const matched = repos.find((repo) => repo.toLowerCase() === sessionRepo);
+  return matched ? [matched] : repos;
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60_000);
@@ -296,6 +312,7 @@ export default {
   defaults: {
     owner: '',
     repos: [],
+    focusCurrentRepo: true,
     maxAgeDays: 14,
     autonomy: 'report',
     workflowFilter: [],
@@ -333,8 +350,9 @@ export default {
     }
 
     // Merge configured + discovered repos
-    const repos = getEffectiveRepos(configRepos, discoveredRepos);
-    if (repos.length === 0) return null;
+    const allRepos = getEffectiveRepos(configRepos, discoveredRepos);
+    if (allRepos.length === 0) return null;
+    const repos = focusSessionRepo(allRepos, config, context);
 
     const state: WatcherState = {
       repos: { ...(prevState?.repos ?? {}) },
@@ -391,7 +409,7 @@ export default {
     }
 
     // Clean up state for repos no longer watched
-    const repoSet = new Set(repos);
+    const repoSet = new Set(allRepos);
     for (const key of Object.keys(state.repos)) {
       if (!repoSet.has(key)) delete state.repos[key];
     }
