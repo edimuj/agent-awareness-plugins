@@ -173,19 +173,19 @@ function shouldAlert(
 
 function formatFullStatus(readings: MetricReading[]): string {
   const lines = readings.map((r) => {
-    const icon = r.status === 'critical' ? '🔴' : r.status === 'warning' ? '🟡' : '🟢';
-    return `${icon} ${r.label}: ${r.value}${r.unit}`;
+    const statusLabel = r.status === 'critical' ? 'CRITICAL' : r.status === 'warning' ? 'WARNING' : 'OK';
+    return `${statusLabel}: ${r.label}: ${r.value}${r.unit}`;
   });
   return `Server health:\n${lines.join('\n')}`;
 }
 
 function formatAlert(reading: MetricReading): string {
   if (reading.transition === 'escalated') {
-    const icon = reading.status === 'critical' ? '🔴 CRITICAL' : '🟡 WARNING';
-    return `${icon}: ${reading.label} at ${reading.value}${reading.unit}`;
+    const statusLabel = reading.status === 'critical' ? 'CRITICAL' : 'WARNING';
+    return `${statusLabel}: ${reading.label} at ${reading.value}${reading.unit}`;
   }
   if (reading.transition === 'recovered') {
-    return `🟢 RECOVERED: ${reading.label} back to ${reading.value}${reading.unit}`;
+    return `RECOVERED: ${reading.label} back to ${reading.value}${reading.unit}`;
   }
   return '';
 }

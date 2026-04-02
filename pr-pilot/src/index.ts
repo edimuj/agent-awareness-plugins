@@ -705,9 +705,9 @@ function formatDashboard(state: PilotState, autonomy: AutonomyConfig): string {
   const openCount = prs.filter(([, pr]) => pr.status === 'open').length;
   sections.push(`PR Pilot: ${openCount} tracked PR${openCount !== 1 ? 's' : ''}`);
 
-  if (needsAction.length) sections.push(`\n🔴 Needs action:\n${needsAction.join('\n')}`);
-  if (waiting.length) sections.push(`\n⏳ Waiting:\n${waiting.join('\n')}`);
-  if (dormant.length) sections.push(`\n💤 Dormant:\n${dormant.join('\n')}`);
+  if (needsAction.length) sections.push(`\nNeeds action:\n${needsAction.join('\n')}`);
+  if (waiting.length) sections.push(`\nWaiting:\n${waiting.join('\n')}`);
+  if (dormant.length) sections.push(`\nDormant:\n${dormant.join('\n')}`);
 
   return sections.join('\n');
 }
@@ -1091,7 +1091,7 @@ export default {
             const reviews = Object.values(pr.reviews.byReviewer)
               .filter((r) => r.state === 'APPROVED').length;
             const days = Math.floor(daysSince(pr.lastActivityAt));
-            const dormantTag = pr.dormant ? ' 💤' : '';
+            const dormantTag = pr.dormant ? ' [dormant]' : '';
             return `${key} — ${pr.title}\n  checks: ${checks} | approvals: ${reviews} | inactive: ${days}d | source: ${pr.source}${dormantTag}`;
           });
 

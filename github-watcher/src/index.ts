@@ -369,17 +369,17 @@ function formatDetailed(activities: RepoActivity[]): string {
     const lines: string[] = [`**${a.repo}**`];
 
     for (const issue of a.newIssues) {
-      lines.push(`  📋 #${issue.number} ${issue.title} (by @${issue.author.login})`);
+      lines.push(`  ISSUE #${issue.number} ${issue.title} (by @${issue.author.login})`);
     }
 
     for (const pr of a.newPRs) {
       const draft = pr.isDraft ? ' [draft]' : '';
-      lines.push(`  🔀 #${pr.number} ${pr.title} (by @${pr.author.login})${draft}`);
+      lines.push(`  PR #${pr.number} ${pr.title} (by @${pr.author.login})${draft}`);
     }
 
     for (const comment of a.newComments) {
       const preview = comment.body.slice(0, 80).replace(/\n/g, ' ');
-      lines.push(`  💬 #${comment.issueNumber} @${comment.author.login}: ${preview}${comment.body.length > 80 ? '…' : ''}`);
+      lines.push(`  COMMENT #${comment.issueNumber} @${comment.author.login}: ${preview}${comment.body.length > 80 ? '…' : ''}`);
     }
 
     sections.push(lines.join('\n'));

@@ -1,13 +1,18 @@
 {
   "name": "agent-awareness-plugin-pr-pilot",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "PR lifecycle manager for agent-awareness — tracks outbound PRs, detects events, frames agent actions",
   "type": "module",
   "exports": {
     ".": "./index.js"
   },
   "main": "./index.js",
-  "files": ["index.js", "src/**/*.js", "src/**/*.d.ts", "README.md"],
+  "files": [
+    "index.js",
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "README.md"
+  ],
   "scripts": {
     "prepublishOnly": "tsc -p ../tsconfig.build.json --noEmit false"
   },
