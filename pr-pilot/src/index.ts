@@ -1164,7 +1164,8 @@ export default {
           const days = Math.floor(daysSince(current.lastActivityAt));
           lines.push(`Last activity: ${days} day${days !== 1 ? 's' : ''} ago | Tracked since: ${current.trackedAt.split('T')[0]} | Source: ${current.source}`);
 
-          return { text: lines.join('\n'), state };
+          // Read-only — don't persist state to avoid overwriting concurrent gather updates
+          return { text: lines.join('\n') };
         },
       },
       {
