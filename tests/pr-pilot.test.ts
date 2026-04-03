@@ -350,3 +350,241 @@ exit 1
     },
   );
 });
+
+// ── Regression: tracked PRs survive MCP reconnect (#1) ──────────────
+
+test('pr-pilot: manual PRs survive session-start when discovery returns empty', async () => {
+  await withFakeCommand(
+    'gh',
+    `
+if [[ "$1 $2" == "search prs" ]]; then
+  echo '[]'
+  exit 0
+fi
+if [[ "$1 $2" == "api graphql" ]]; then
+  cat <<'JSON'
+{"data":{"repository":{"pullRequest":{"title":"Tracked PR","headRefName":"feat","url":"https://github.com/upstream/project/pull/99","state":"OPEN","mergeable":"MERGEABLE","updatedAt":"2026-04-01T09:00:00.000Z","labels":{"nodes":[]},"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS","contexts":{"nodes":[]}}}}]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+JSON
+  exit 0
+fi
+echo "unexpected gh args: $*" >&2
+exit 1
+`,
+    async () => {
+      const plugin = (await import(pluginUrl('pr-pilot/src/index.ts'))).default;
+      const result = await plugin.gather(
+        'session-start',
+        {
+          autoDiscover: true,
+          includeOwnRepos: false,
+          includeControlledOrgRepos: false,
+          repos: [],
+          username: '',
+          staleDays: 7,
+          staleTtlDays: 30,
+          dormantBackoffCycles: 12,
+          triggers: { 'session-start': 'dashboard' },
+          autonomy: {},
+        },
+        {
+          prs: {
+            'upstream/project#99': {
+              url: 'https://github.com/upstream/project/pull/99',
+              repo: 'upstream/project',
+              number: 99,
+              title: 'Tracked PR',
+              branch: 'feat',
+              checks: { conclusion: 'success', failed: [], updatedAt: '2026-03-30T00:00:00.000Z' },
+              reviews: { byReviewer: {}, pendingComments: [] },
+              mergeable: true,
+              labels: [],
+              lastActivityAt: '2026-03-30T00:00:00.000Z',
+              trackedAt: '2026-03-01T00:00:00.000Z',
+              status: 'open',
+              dormant: false,
+              source: 'manual',
+            },
+          },
+          cycle: 100,
+          lastDiscovery: '2026-03-31T10:00:00.000Z',
+          resolvedUsername: 'alice',
+        },
+        testContext(),
+      );
+
+      assert.ok(result, 'gather should return a result');
+      assert.ok(result.state.prs['upstream/project#99'], 'manual PR must survive session-start');
+      assert.equal(result.state.prs['upstream/project#99'].source, 'manual');
+    },
+  );
+});
+
+test('pr-pilot: auto PRs survive session-start when fetchPRData fails during cleanup', async () => {
+  await withFakeCommand(
+    'gh',
+    `
+if [[ "$1 $2" == "search prs" ]]; then
+  echo '[]'
+  exit 0
+fi
+if [[ "$1 $2" == "api graphql" ]]; then
+  echo '{"errors":[{"message":"not found"}]}' >&2
+  exit 1
+fi
+echo "unexpected gh args: $*" >&2
+exit 1
+`,
+    async () => {
+      const plugin = (await import(pluginUrl('pr-pilot/src/index.ts'))).default;
+      const result = await plugin.gather(
+        'session-start',
+        {
+          autoDiscover: true,
+          includeOwnRepos: false,
+          includeControlledOrgRepos: false,
+          repos: [],
+          username: '',
+          staleDays: 7,
+          staleTtlDays: 30,
+          dormantBackoffCycles: 12,
+          triggers: { 'session-start': 'dashboard' },
+          autonomy: {},
+        },
+        {
+          prs: {
+            'upstream/project#88': {
+              url: 'https://github.com/upstream/project/pull/88',
+              repo: 'upstream/project',
+              number: 88,
+              title: 'Auto-tracked PR',
+              branch: 'feat',
+              checks: { conclusion: 'success', failed: [], updatedAt: '2026-03-30T00:00:00.000Z' },
+              reviews: { byReviewer: {}, pendingComments: [] },
+              mergeable: true,
+              labels: [],
+              lastActivityAt: '2026-03-30T00:00:00.000Z',
+              trackedAt: '2026-03-01T00:00:00.000Z',
+              status: 'open',
+              dormant: false,
+              source: 'auto',
+            },
+          },
+          cycle: 50,
+          lastDiscovery: '2026-03-31T10:00:00.000Z',
+          resolvedUsername: 'alice',
+        },
+        testContext(),
+      );
+
+      assert.ok(result, 'gather should return a result');
+      assert.ok(result.state.prs['upstream/project#88'], 'auto PR must survive when fetchPRData fails');
+    },
+  );
+});
+
+test('pr-pilot: MCP status tool is read-only (no state returned)', async () => {
+  await withFakeCommand(
+    'gh',
+    `
+if [[ "$1 $2" == "api graphql" ]]; then
+  cat <<'JSON'
+{"data":{"repository":{"pullRequest":{"title":"PR upstream/project#42","headRefName":"feature-branch","url":"https://github.com/upstream/project/pull/42","state":"OPEN","mergeable":"MERGEABLE","updatedAt":"2026-04-01T09:00:00.000Z","labels":{"nodes":[]},"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS","contexts":{"nodes":[]}}}}]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+JSON
+  exit 0
+fi
+exit 1
+`,
+    async () => {
+      const plugin = (await import(pluginUrl('pr-pilot/src/index.ts'))).default;
+      const statusTool = plugin.mcp.tools.find((tool: { name: string }) => tool.name === 'status');
+      assert.ok(statusTool);
+
+      const result = await statusTool.handler(
+        { pr: 'upstream/project#42' },
+        {},
+        new AbortController().signal,
+        {
+          prs: {
+            'upstream/project#42': {
+              url: 'https://github.com/upstream/project/pull/42',
+              repo: 'upstream/project',
+              number: 42,
+              title: 'Test PR',
+              branch: 'feature-branch',
+              checks: { conclusion: 'success', failed: [], updatedAt: '2026-03-30T00:00:00.000Z' },
+              reviews: { byReviewer: {}, pendingComments: [] },
+              mergeable: true,
+              labels: [],
+              lastActivityAt: '2026-03-30T00:00:00.000Z',
+              trackedAt: '2026-03-01T00:00:00.000Z',
+              status: 'open',
+              dormant: false,
+              source: 'manual',
+            },
+          },
+          cycle: 0,
+          lastDiscovery: '',
+          resolvedUsername: 'alice',
+        },
+      );
+
+      assert.ok(result);
+      assert.ok(result.text.includes('upstream/project#42'));
+      assert.equal(result.state, undefined, 'status tool must not return state (read-only)');
+    },
+  );
+});
+
+test('pr-pilot: MCP track tool preserves existing PRs', async () => {
+  await withFakeCommand(
+    'gh',
+    `
+if [[ "$1 $2" == "api graphql" ]]; then
+  cat <<'JSON'
+{"data":{"repository":{"pullRequest":{"title":"New PR","headRefName":"new-feat","url":"https://github.com/other/repo/pull/5","state":"OPEN","mergeable":"MERGEABLE","updatedAt":"2026-04-01T09:00:00.000Z","labels":{"nodes":[]},"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS","contexts":{"nodes":[]}}}}]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+JSON
+  exit 0
+fi
+exit 1
+`,
+    async () => {
+      const plugin = (await import(pluginUrl('pr-pilot/src/index.ts'))).default;
+      const trackTool = plugin.mcp.tools.find((tool: { name: string }) => tool.name === 'track');
+      assert.ok(trackTool);
+
+      const result = await trackTool.handler(
+        { url: 'other/repo#5' },
+        {},
+        new AbortController().signal,
+        {
+          prs: {
+            'upstream/project#42': {
+              url: 'https://github.com/upstream/project/pull/42',
+              repo: 'upstream/project',
+              number: 42,
+              title: 'Existing PR',
+              branch: 'feature-branch',
+              checks: { conclusion: 'success', failed: [], updatedAt: '2026-03-30T00:00:00.000Z' },
+              reviews: { byReviewer: {}, pendingComments: [] },
+              mergeable: true,
+              labels: [],
+              lastActivityAt: '2026-03-30T00:00:00.000Z',
+              trackedAt: '2026-03-01T00:00:00.000Z',
+              status: 'open',
+              dormant: false,
+              source: 'manual',
+            },
+          },
+          cycle: 10,
+          lastDiscovery: '',
+          resolvedUsername: 'alice',
+        },
+      );
+
+      assert.ok(result);
+      assert.ok(result.state, 'track tool should return state');
+      assert.ok(result.state.prs['upstream/project#42'], 'existing PR must be preserved');
+      assert.ok(result.state.prs['other/repo#5'], 'new PR must be added');
+    },
+  );
+});
