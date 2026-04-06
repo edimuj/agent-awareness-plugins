@@ -104,7 +104,7 @@ async function collectSwapUsage(signal?: AbortSignal): Promise<number> {
 async function collectDockerHealth(signal?: AbortSignal): Promise<{ total: number; unhealthy: string[] }> {
   try {
     const { stdout } = await exec(
-      'sg docker -c \'docker ps --format "{{.Names}}\\t{{.Status}}"\' 2>/dev/null',
+      'docker ps --format "{{.Names}}\\t{{.Status}}" 2>/dev/null',
       { signal, env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } },
     );
     if (!stdout.trim()) return { total: 0, unhealthy: [] };
@@ -408,7 +408,9 @@ export default {
     const isFullReport = triggerFormat === 'full' || trigger === 'session-start';
 
     if (isFullReport) {
-      return { text: formatFullStatus(readings), state: newState };
+      const abnormal = readings.filter((r) => r.status !== 'normal');
+      if (abnormal.length === 0) return { text: '', state: newState };
+      return { text: formatFullStatus(abnormal), state: newState };
     }
 
     // Alert mode: only report transitions that aren't cooldown-suppressed
