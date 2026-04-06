@@ -46,9 +46,11 @@ export default {
     },
   },
 
-  async gather(_trigger: Trigger, config: PluginConfig, prevState, context: GatherContext) {
+  async gather(trigger: Trigger, config: PluginConfig, prevState, context: GatherContext) {
     const now = new Date();
-    const sessionStart = (prevState?.sessionStart as string) ?? now.toISOString();
+    const sessionStart = trigger === 'session-start'
+      ? now.toISOString()
+      : (prevState?.sessionStart as string) ?? now.toISOString();
     const elapsedMs = now.getTime() - new Date(sessionStart).getTime();
     const elapsedMin = Math.round(elapsedMs / 60_000);
 
