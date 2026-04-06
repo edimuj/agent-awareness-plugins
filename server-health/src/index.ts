@@ -21,6 +21,7 @@ import type {
   AwarenessPlugin,
   GatherContext,
   GatherResult,
+  PluginConfig,
   Trigger,
 } from 'agent-awareness';
 
