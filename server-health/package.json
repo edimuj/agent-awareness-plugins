@@ -1,6 +1,6 @@
 {
   "name": "agent-awareness-plugin-server-health",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Server health alerts for agent-awareness — threshold-based with hysteresis and cooldown",
   "type": "module",
   "exports": {
