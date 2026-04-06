@@ -21,7 +21,6 @@ import type {
   AwarenessPlugin,
   GatherContext,
   GatherResult,
-  PluginConfig,
   Trigger,
 } from 'agent-awareness';
 
@@ -438,66 +437,4 @@ export default {
     return { text, state: newState };
   },
 
-  mcp: {
-    tools: [
-      {
-        name: 'status',
-        description: 'Get full server health status right now — all metrics with current values and threshold states',
-        inputSchema: { type: 'object' as const },
-        async handler(
-          _params: Record<string, unknown>,
-          config: PluginConfig,
-          signal: AbortSignal,
-          prevState: Record<string, unknown> | null,
-        ): Promise<GatherResult | null> {
-          const { readings, newState } = await collectAllMetrics(config, prevState as HealthState | null, signal);
-          return { text: formatFullStatus(readings), state: newState };
-        },
-      },
-      {
-        name: 'acknowledge',
-        description: 'Acknowledge a warning — resets the cooldown timer for a metric so it won\'t re-alert until a new transition',
-        inputSchema: {
-          type: 'object' as const,
-          properties: {
-            metric: {
-              type: 'string',
-              description: 'Metric name to acknowledge (disk:/, memory, swap, load, openFiles, docker)',
-            },
-          },
-          required: ['metric'],
-        },
-        async handler(
-          params: Record<string, unknown>,
-          _config: PluginConfig,
-          _signal: AbortSignal,
-          prevState: Record<string, unknown> | null,
-        ): Promise<GatherResult | null> {
-          const metric = params.metric as string;
-          const state = (prevState as HealthState | null) ?? { metrics: {}, initialized: new Date().toISOString() };
-
-          if (!state.metrics[metric]) {
-            return { text: `Unknown metric: ${metric}` };
-          }
-
-          // Set last alert time to now — starts a fresh cooldown window
-          const newState: HealthState = {
-            ...state,
-            metrics: {
-              ...state.metrics,
-              [metric]: {
-                ...state.metrics[metric],
-                lastAlertAt: new Date().toISOString(),
-              },
-            },
-          };
-
-          return {
-            text: `Acknowledged: ${metric} (status: ${state.metrics[metric].status})`,
-            state: newState,
-          };
-        },
-      },
-    ],
-  },
 } satisfies AwarenessPlugin<HealthState>;

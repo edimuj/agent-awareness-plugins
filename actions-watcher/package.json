@@ -1,6 +1,6 @@
 {
   "name": "agent-awareness-plugin-actions-watcher",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "GitHub Actions workflow monitor for agent-awareness — reports failures and recoveries",
   "type": "module",
   "exports": {

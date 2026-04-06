@@ -1,6 +1,6 @@
 {
   "name": "agent-awareness-plugin-focus-timer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pomodoro-style focus timer for agent-awareness with MCP controls",
   "type": "module",
   "exports": {

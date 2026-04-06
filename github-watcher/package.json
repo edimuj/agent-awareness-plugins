@@ -1,6 +1,6 @@
 {
   "name": "agent-awareness-plugin-github-watcher",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "GitHub repo watcher for agent-awareness — monitors issues, PRs, and comments",
   "type": "module",
   "exports": {
