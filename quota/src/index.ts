@@ -26,7 +26,7 @@ export default {
   name: 'quota',
   description: 'Real API quota utilization — adapts to the running provider',
 
-  triggers: ['session-start', 'interval:10m'],
+  triggers: ['session-start', 'interval:5m', 'interval:10m', 'interval:15m', 'interval:30m'],
 
   defaults: {
     showSession: true,
@@ -42,26 +42,29 @@ export default {
     ] as ThresholdSignal[],
     triggers: {
       'session-start': true,
-      'interval:10m': true,
+      'interval:15m': true,
     },
   },
 
   async gather(trigger: Trigger, config: PluginConfig, prevState, context: GatherContext) {
     const now = new Date();
-    const sessionStart = trigger === 'session-start'
+    const isFirst = trigger === 'session-start' || !prevState;
+    const sessionStart = isFirst
       ? now.toISOString()
       : (prevState?.sessionStart as string) ?? now.toISOString();
     const elapsedMs = now.getTime() - new Date(sessionStart).getTime();
     const elapsedMin = Math.round(elapsedMs / 60_000);
 
-    const parts: string[] = [];
+    const prev = (prevState?.lastReported ?? {}) as Record<string, string>;
+    const current: Record<string, string> = {};
+    const quotaParts: string[] = [];
 
-    // Session duration
+    // Session duration — computed but only included if quota actually changed
+    let sessionStr = '';
     if (config.showSession !== false) {
-      const elapsedStr = elapsedMin < 60
+      sessionStr = elapsedMin < 60
         ? `${elapsedMin}min`
         : `${Math.floor(elapsedMin / 60)}h${String(elapsedMin % 60).padStart(2, '0')}min`;
-      parts.push(`Session: ${elapsedStr}`);
     }
 
     // Dispatch to provider-specific fetcher
@@ -69,13 +72,17 @@ export default {
     const quota = fetcher ? await fetcher() : null;
 
     if (quota) {
-      // Burst (5h) window
+      // Burst (5h) window — diff on pct+signal only, not countdown
       if (config.showBurst !== false && quota.burst) {
         const pct = quota.burst.utilization;
         const signal = matchSignal(pct, config.burstSignals as ThresholdSignal[] | undefined);
         const signalStr = signal ? ` ${signal}` : '';
-        const resetStr = config.showResetTime !== false ? ` (↻${timeUntil(quota.burst.resetsAt)})` : '';
-        parts.push(`5h: ${pct}%${signalStr}${resetStr}`);
+        const burstKey = `${pct}%${signalStr}`;
+        current.burst = burstKey;
+        if (isFirst || burstKey !== prev.burst) {
+          const resetStr = config.showResetTime !== false ? ` (↻${timeUntil(quota.burst.resetsAt)})` : '';
+          quotaParts.push(`5h: ${burstKey}${resetStr}`);
+        }
       }
 
       // Weekly (7d) window
@@ -83,15 +90,21 @@ export default {
         const pct = quota.weekly.utilization;
         const signal = matchSignal(pct, config.weeklySignals as ThresholdSignal[] | undefined);
         const signalStr = signal ? ` ${signal}` : '';
-        parts.push(`7d: ${pct}%${signalStr}`);
+        const weeklyStr = `${pct}%${signalStr}`;
+        current.weekly = weeklyStr;
+        if (isFirst || weeklyStr !== prev.weekly) quotaParts.push(`7d: ${weeklyStr}`);
       }
     }
 
-    if (parts.length === 0) return null;
+    if (quotaParts.length === 0 && !isFirst) return null;
+
+    const parts: string[] = [];
+    if (sessionStr) parts.push(`Session: ${sessionStr}`);
+    parts.push(...quotaParts);
 
     return {
       text: parts.join(' | '),
-      state: { sessionStart, lastCheck: now.toISOString() },
+      state: { sessionStart, lastCheck: now.toISOString(), lastReported: current },
     };
   },
 } satisfies AwarenessPlugin;
