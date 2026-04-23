@@ -19,6 +19,13 @@ npm install -g agent-awareness-plugin-github-watcher
 
 The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
+## Triggers
+
+| Trigger | Default | Description |
+|---------|---------|-------------|
+| `session-start` | **`detailed`** | Full breakdown of new issues, PRs, and comments at session start |
+| `interval:15m` | **`compact`** | One-liner summary every 15 minutes, silent when nothing new |
+
 ## Configuration
 
 Create `~/.config/agent-awareness/plugins.d/github-watcher.json`:
@@ -53,6 +60,7 @@ Create `~/.config/agent-awareness/plugins.d/github-watcher.json`:
 | `commentLimit` | `number` | `10` | Max comments per repo per check |
 | `format` | `string` | `"auto"` | Output format: `compact`, `detailed`, or `auto` |
 | `onlyWhenNew` | `boolean` | `true` | Only inject when there's new activity |
+| `focusCurrentRepo` | `boolean` | `true` | Prioritize current session's repo when it matches a watched repo |
 
 ### Trigger formats
 

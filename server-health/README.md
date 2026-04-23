@@ -32,6 +32,13 @@ npm install -g agent-awareness-plugin-server-health
 
 The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
+## Triggers
+
+| Trigger | Default | Description |
+|---------|---------|-------------|
+| `session-start` | **`full`** | Full status report for all metrics at session start |
+| `interval:2m` | **`alerts`** | State-transition alerts only (breaches and recoveries); silent when healthy |
+
 ## Configuration
 
 Create `~/.config/agent-awareness/plugins.d/server-health.json`:

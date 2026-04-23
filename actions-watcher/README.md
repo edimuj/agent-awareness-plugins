@@ -21,6 +21,13 @@ npm install -g agent-awareness-plugin-actions-watcher
 
 The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
+## Triggers
+
+| Trigger | Default | Description |
+|---------|---------|-------------|
+| `session-start` | **`full`** | Full report of all failing workflows at session start |
+| `interval:5m` | **`delta`** | Delta-only: new failures and recoveries since last check |
+
 ## Prerequisites
 
 - [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login`)
@@ -69,6 +76,7 @@ You can combine both — `owner` discovers repos, `repos` adds extras.
 |--------|---------|-------------|
 | `owner` | `""` | GitHub owner for auto-discovery. Empty = discovery disabled |
 | `repos` | `[]` | Explicit repos to monitor (`owner/name`). Merged with discovered repos |
+| `focusCurrentRepo` | `true` | Prioritize current session's repo when it matches a watched repo |
 | `maxAgeDays` | `14` | Ignore workflow runs older than this many days |
 | `autonomy` | `"report"` | `"report"` = inform only, `"full"` = directive to fix and monitor |
 | `workflowFilter` | `[]` | Workflow name substrings to include. Empty = all workflows |

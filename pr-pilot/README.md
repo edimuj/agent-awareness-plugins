@@ -26,6 +26,13 @@ npm install -g agent-awareness-plugin-pr-pilot
 
 The agent-awareness loader auto-discovers `agent-awareness-plugin-*` packages from both global and local `node_modules/`.
 
+## Triggers
+
+| Trigger | Default | Description |
+|---------|---------|-------------|
+| `session-start` | **`dashboard`** | Full overview of tracked PRs grouped by urgency |
+| `interval:5m` | **`events`** | New events only since last check (CI failures, reviews, conflicts); silent when nothing changed |
+
 ## Configuration
 
 Create `~/.config/agent-awareness/plugins.d/pr-pilot.json`:
