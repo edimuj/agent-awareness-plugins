@@ -1,6 +1,6 @@
 {
   "name": "agent-awareness-plugin-quota",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Provider-aware API quota plugin for agent-awareness (Claude and Codex)",
   "type": "module",
   "exports": {

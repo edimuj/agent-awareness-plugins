@@ -80,7 +80,7 @@ export default {
         const burstKey = `${pct}%${signalStr}`;
         current.burst = burstKey;
         if (isFirst || burstKey !== prev.burst) {
-          const resetStr = config.showResetTime !== false ? ` (↻${timeUntil(quota.burst.resetsAt)})` : '';
+          const resetStr = config.showResetTime !== false ? ` (${timeUntil(quota.burst.resetsAt)})` : '';
           quotaParts.push(`5h: ${burstKey}${resetStr}`);
         }
       }
