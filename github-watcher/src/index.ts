@@ -78,7 +78,7 @@ function focusSessionRepo(repos: string[], config: PluginConfig, context: Gather
   if (!sessionRepo) return repos;
 
   const matched = repos.find((repo) => repo.toLowerCase() === sessionRepo);
-  return matched ? [matched] : repos;
+  return matched ? [matched] : [];
 }
 
 async function gh(args: string[], log: Log, signal?: AbortSignal): Promise<string> {

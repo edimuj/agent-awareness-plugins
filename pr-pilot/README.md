@@ -15,7 +15,6 @@ Getting PRs merged on external repos is harder than ever. AI security audits, au
 - **Configurable autonomy** — per-event control: notify, suggest, or instruct the agent to act
 - **Dormancy backoff** — active PRs checked every 5 min, dormant PRs ~hourly
 - **Two-stage staleness** — warning at 7 days, auto-cleanup at 30 days (configurable)
-- **MCP tools** — manual tracking, status checks, force re-checks
 - **Zero token waste** — silent when nothing changed
 
 ## Installation
@@ -127,20 +126,10 @@ PR Pilot: 3 tracked PRs
 PR Pilot: CI failed on vercel/next.js#4521 "Fix SSR hydration mismatch": 2 failed: eslint, jest. Action required: clone repo, fix failing checks, run tests locally, push fix commit
 ```
 
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `awareness_pr_pilot_track` | Manually track a PR (URL or owner/repo#N) |
-| `awareness_pr_pilot_untrack` | Stop tracking a PR |
-| `awareness_pr_pilot_list` | List tracked PRs with status summary |
-| `awareness_pr_pilot_status` | Detailed breakdown for a specific PR |
-| `awareness_pr_pilot_check` | Force re-check a PR right now |
-
 ## Discovery modes
 
 - **`autoDiscover: true`** (default) — polls GitHub search API for your open PRs. By default it excludes repos you control (your own repos plus org repos where you have write-level permission). Optional `repos` allowlist limits scope. Discovery runs at session start and every ~30 minutes.
-- **`autoDiscover: false`** — explicit tracking only via the `track` MCP tool.
+- **`autoDiscover: false`** — explicit tracking only; use `repos` to specify targets.
 - Manual tracking via `track` is always available regardless of mode.
 
 ## Staleness lifecycle

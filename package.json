@@ -18,7 +18,8 @@
     "server-health",
     "pr-pilot",
     "system",
-    "weather"
+    "weather",
+    "debug"
   ],
   "devDependencies": {
     "@types/node": "^25.5.0",

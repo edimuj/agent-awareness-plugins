@@ -55,61 +55,6 @@ exit 1
   );
 });
 
-test('github-watcher check --since does not mutate persisted repo cursors', async () => {
-  await withFakeCommand(
-    'gh',
-    `
-if [[ "$1 $2" == "issue list" ]]; then
-  echo '[]'
-  exit 0
-fi
-if [[ "$1 $2" == "pr list" ]]; then
-  echo '[]'
-  exit 0
-fi
-if [[ "$1 $2" == "api graphql" ]]; then
-  cat <<'JSON'
-{"data":{"repository":{"issueComments":{"nodes":[]},"prComments":{"nodes":[]}}}}
-JSON
-  exit 0
-fi
-echo "unexpected gh args: $*" >&2
-exit 1
-`,
-    async () => {
-      const plugin = (await import(pluginUrl('github-watcher/src/index.ts'))).default;
-      const checkTool = plugin.mcp.tools.find((tool: { name: string }) => tool.name === 'check');
-      assert.ok(checkTool);
-
-      const prevState = {
-        repos: {
-          'acme/ext': {
-            lastIssueId: 99,
-            lastPrId: 10,
-            lastIssueAt: '2020-01-01T00:00:00.000Z',
-            lastPrAt: '2020-01-01T00:00:00.000Z',
-            lastCommentAt: '2020-01-01T00:00:00.000Z',
-          },
-        },
-        lastCheck: '2020-01-01T00:00:00.000Z',
-      };
-
-      const result = await checkTool.handler(
-        { repo: 'acme/ext', since: '2026-03-01T00:00:00.000Z' },
-        { repos: ['acme/ext'], ignoreAuthors: [], commentLimit: 10 },
-        new AbortController().signal,
-        prevState,
-      );
-
-      assert.ok(result);
-      const next = result.state as typeof prevState;
-      assert.equal(next.repos['acme/ext'].lastIssueAt, '2020-01-01T00:00:00.000Z');
-      assert.equal(next.repos['acme/ext'].lastPrAt, '2020-01-01T00:00:00.000Z');
-      assert.equal(next.repos['acme/ext'].lastCommentAt, '2020-01-01T00:00:00.000Z');
-    },
-  );
-});
-
 test('github-watcher deduplicates cross-session claims for identical activity', async () => {
   await withFakeCommand(
     'gh',

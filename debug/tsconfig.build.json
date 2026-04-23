@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": ".",
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["index.ts", "src/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}

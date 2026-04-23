@@ -10,7 +10,6 @@ An [agent-awareness](https://github.com/edimuj/agent-awareness) plugin that moni
 - **Private repo support** — uses `gh` CLI authentication
 - **Parallel fetching** — checks all repos concurrently
 - **Workflow & branch filtering** — focus on the workflows that matter
-- **MCP tools** — on-demand `check`, `discover`, and `runs` for real-time queries
 - **Silent when green** — zero tokens wasted when everything passes
 
 ## Installation
@@ -110,14 +109,6 @@ With `"autonomy": "report"` (default), the agent is only informed — no action 
 ## Multi-agent coordination
 
 When multiple Claude Code sessions are running concurrently, the plugin claims each repo's workflow batch so only one session reports it. Unclaimed repos are silently skipped — another session handles them. State is always updated for all repos regardless of claim ownership, keeping delta tracking accurate.
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `awareness_actions_watcher_check` | Force re-check all repos (or one specific repo) |
-| `awareness_actions_watcher_discover` | Re-discover repos with workflows, shows what's being watched |
-| `awareness_actions_watcher_runs` | List recent workflow runs for a repo |
 
 ## License
 

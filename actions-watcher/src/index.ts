@@ -185,7 +185,7 @@ function focusSessionRepo(
   if (!sessionRepo) return repos;
 
   const matched = repos.find((repo) => repo.toLowerCase() === sessionRepo);
-  return matched ? [matched] : repos;
+  return matched ? [matched] : [];
 }
 
 function timeAgo(dateStr: string): string {

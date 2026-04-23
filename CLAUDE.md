@@ -46,14 +46,12 @@ session, downgrade to notify or skip.
 - **server-health**: claims alert transitions, unclaimed alerts silently suppressed
 - **github-watcher**: claims per-repo activity batches, unclaimed repos dropped from output
 - **actions-watcher**: claims per-repo workflow batches, unclaimed repos silently dropped
-- **claim-debugger**: MCP-only debug tool for inspecting/simulating/testing claims
 
 ## Plugins
 
 | Plugin | What it does | Key deps |
 |--------|-------------|----------|
 | `energy-curve` | Adapts agent style to user energy rhythm by hour/profile | Node builtins |
-| `focus-timer` | Pomodoro focus timer (start/break/stop/extend/status) | Node builtins |
 | `quota` | Provider-aware usage quotas for Claude and Codex | Claude API / `codex app-server` |
 | `system` | Disk, memory, load thresholds with warning labels | Node builtins |
 | `weather` | Local weather via Open-Meteo + IP geolocation fallback | Open-Meteo + ip-api.com |
@@ -61,14 +59,12 @@ session, downgrade to notify or skip.
 | `server-health` | Threshold alerts with hysteresis + cooldown | Node builtins |
 | `pr-pilot` | Tracks outbound PRs, detects lifecycle events, frames agent actions | `gh` CLI |
 | `actions-watcher` | Monitors GitHub Actions workflow runs — failures and recoveries | `gh` CLI |
-| `claim-debugger` | Debug tool for testing multi-agent claims | — |
 
 ### actions-watcher
 - Config: `owner` (auto-discover repos), `repos` (explicit list), `maxAgeDays` (stale filter, default 14), `autonomy` (`"report"` | `"full"`)
 - Auto-discovery: on session-start, `gh repo list` → check each for workflow runs → cache in state
 - Stale filtering: `filterStaleRuns()` removes workflows with no runs in last N days from output
 - Discovery is age-agnostic (finds all repos with any runs), `maxAgeDays` only filters reporting
-- 3 MCP tools: check (re-check status), discover (re-discover repos), runs (list recent runs)
 - State: `WatcherState` — per-repo workflow tracking + `discoveredRepos[]` cache
 
 ### github-watcher
@@ -87,13 +83,12 @@ session, downgrade to notify or skip.
 - Autonomy levels per event: `notify` | `suggest` | `act` — controls directive framing
 - Dormancy backoff: active PRs every 5m, dormant ~hourly
 - Two-stage staleness: warning at `staleDays` (7), removal at `staleTtlDays` (30)
-- 5 MCP tools: track, untrack, list, status, check
 
 ## Dev Notes
 
 - Source is TypeScript, published output is compiled JS
 - Import types from `agent-awareness` (not deep path) — re-exported from main entry
-- Only type-only imports from `agent-awareness` survive compilation — runtime imports (like `CLAIMS_DIR`, `createClaimContext` in claim-debugger) require agent-awareness to also ship compiled JS
+- Only type-only imports from `agent-awareness` survive compilation
 - `tsconfig.json` at root: `target: ES2022`, `noEmit`, `allowImportingTsExtensions` (dev only)
 - `tsconfig.build.json` at root: emits JS + declarations with `rewriteRelativeImportExtensions`
 - `agent-awareness` as devDependency via `file:../agent-awareness` (local dev)

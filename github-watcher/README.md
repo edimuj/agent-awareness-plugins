@@ -8,7 +8,6 @@ An [agent-awareness](https://github.com/edimuj/agent-awareness) provider plugin 
 - **External-only filtering** — ignore specific users like your own account or bots (`ignoreAuthors`)
 - **Parallel fetching** — checks all repos concurrently
 - **Compact + detailed formats** — compact for intervals, detailed for session start
-- **MCP tools** — on-demand `check` and `repos` tools for real-time queries
 - **Zero token waste** — silent when nothing new (`onlyWhenNew: true`)
 
 ## Installation
@@ -85,13 +84,6 @@ GitHub activity:
 **edimuj/claude-rig**
   🔀 #15 Add fish shell support (by @community-dev)
 ```
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `awareness_github_watcher_check` | Check repos for new activity right now |
-| `awareness_github_watcher_repos` | List watched repos and last-check timestamps |
 
 ## Requirements
 

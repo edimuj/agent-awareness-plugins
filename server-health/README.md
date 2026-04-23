@@ -122,13 +122,6 @@ Server: 🟢 RECOVERED: Memory back to 74%
 Server: 🔴 CRITICAL: Disk at 95% | 🟡 WARNING: Memory at 83%
 ```
 
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `awareness_server_health_status` | Get full status report on demand |
-| `awareness_server_health_acknowledge` | Acknowledge a warning (resets cooldown) |
-
 ## Requirements
 
 - Linux (uses `/proc/sys/fs/file-nr`, `free`)
