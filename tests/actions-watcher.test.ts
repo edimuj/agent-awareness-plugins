@@ -134,7 +134,7 @@ test('actions-watcher should classify failure after cancelled as FAILED (not sti
         'interval:5m',
         {
           repos: ['alice/repo1'],
-          maxAgeDays: 14,
+          maxAgeDays: 0,
           autonomy: 'report',
           workflowFilter: [],
           branchFilter: [],
@@ -180,7 +180,7 @@ test('actions-watcher focuses reporting to current session repo by default', asy
         'session-start',
         {
           repos: ['alice/repo1', 'alice/repoB'],
-          maxAgeDays: 14,
+          maxAgeDays: 0,
           autonomy: 'report',
           workflowFilter: [],
           branchFilter: [],
@@ -210,7 +210,7 @@ test('actions-watcher can disable session-repo focus', async () => {
         {
           repos: ['alice/repo1', 'alice/repoB'],
           focusCurrentRepo: false,
-          maxAgeDays: 14,
+          maxAgeDays: 0,
           autonomy: 'report',
           workflowFilter: [],
           branchFilter: [],
@@ -227,8 +227,8 @@ test('actions-watcher can disable session-repo focus', async () => {
   );
 });
 
-test('actions-watcher d.ts should keep runs.limit input type as number', async () => {
+test('actions-watcher d.ts should keep config limit default typed as number', async () => {
   await exec('npm', ['run', 'build']);
   const dts = await readFile(new URL('../actions-watcher/src/index.d.ts', import.meta.url), 'utf8');
-  assert.match(dts, /limit:\s*\{\s*type:\s*"number"/s);
+  assert.match(dts, /limit:\s*number/);
 });

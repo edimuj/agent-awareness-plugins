@@ -5,9 +5,8 @@ import { pluginUrl, testContext, withFakeCommand } from './helpers.ts';
 
 test('server-health keeps critical status within critical hysteresis band', async () => {
   await withFakeCommand(
-    'sg',
+    'docker',
     `
-# Called as: sg docker -c 'docker ps --format "{{.Names}}\t{{.Status}}"'
 cat <<'OUT'
 svc-a	Up 1 minute (unhealthy)
 svc-b	Up 1 minute (unhealthy)
@@ -53,7 +52,7 @@ test('server-health reports recovery transitions even during cooldown', async ()
   const justAlertedAt = new Date().toISOString();
 
   await withFakeCommand(
-    'sg',
+    'docker',
     `
 cat <<'OUT'
 svc-a\tUp 1 minute
@@ -97,7 +96,7 @@ OUT
 
 test('server-health deep-merges partial metric thresholds with docker defaults', async () => {
   await withFakeCommand(
-    'sg',
+    'docker',
     `
 cat <<'OUT'
 svc-a\tUp 1 minute (unhealthy)

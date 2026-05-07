@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { constants } from 'node:fs';
+import { access, readFile } from 'node:fs/promises';
+import { delimiter, join } from 'node:path';
 import { homedir } from 'node:os';
 import { request } from 'node:https';
 import { spawn } from 'node:child_process';
@@ -9,6 +10,7 @@ import type { AwarenessPlugin, GatherContext, PluginConfig, Trigger } from 'agen
 interface Quota {
   burst: { utilization: number; resetsAt: string } | null;
   weekly: { utilization: number; resetsAt: string } | null;
+  backoffUntil?: number;
 }
 
 interface ThresholdSignal {
@@ -21,6 +23,8 @@ const FETCHERS: Record<string, () => Promise<Quota | null>> = {
   'claude-code': fetchClaudeQuota,
   'codex': fetchCodexQuota,
 };
+
+const CODEX_APP_SERVER_TIMEOUT_MS = 3_000;
 
 export default {
   name: 'quota',
@@ -67,9 +71,13 @@ export default {
         : `${Math.floor(elapsedMin / 60)}h${String(elapsedMin % 60).padStart(2, '0')}min`;
     }
 
+    // Skip API call if in 429 backoff
+    const backoffUntil = (prevState?.backoffUntil as number) ?? 0;
+    const inBackoff = now.getTime() < backoffUntil;
+
     // Dispatch to provider-specific fetcher
     const fetcher = FETCHERS[context.provider];
-    const quota = fetcher ? await fetcher() : null;
+    const quota = inBackoff ? null : fetcher ? await fetcher() : null;
 
     if (quota) {
       // Burst (5h) window — diff on pct+signal only, not countdown
@@ -104,7 +112,12 @@ export default {
 
     return {
       text: parts.join(' | '),
-      state: { sessionStart, lastCheck: now.toISOString(), lastReported: current },
+      state: {
+        sessionStart,
+        lastCheck: now.toISOString(),
+        lastReported: current,
+        backoffUntil: quota?.backoffUntil ?? (inBackoff ? backoffUntil : 0),
+      },
     };
   },
 } satisfies AwarenessPlugin;
@@ -142,6 +155,7 @@ async function fetchClaudeQuota(): Promise<Quota | null> {
         headers: {
           Authorization: `Bearer ${token}`,
           'anthropic-beta': 'oauth-2025-04-20',
+          'User-Agent': 'agent-awareness-quota/1.0',
         },
         timeout: 5_000,
       },
@@ -149,6 +163,11 @@ async function fetchClaudeQuota(): Promise<Quota | null> {
         let body = '';
         res.on('data', (chunk: string) => { body += chunk; });
         res.on('end', () => {
+          if (res.statusCode === 429) {
+            const retrySec = parseInt(res.headers['retry-after'] as string, 10) || 300;
+            resolve({ burst: null, weekly: null, backoffUntil: Date.now() + retrySec * 1000 });
+            return;
+          }
           if (res.statusCode !== 200) { resolve(null); return; }
           try {
             const raw = JSON.parse(body);
@@ -175,16 +194,28 @@ async function fetchClaudeQuota(): Promise<Quota | null> {
 // --- Codex ---
 
 async function fetchCodexQuota(): Promise<Quota | null> {
+  const codexBinary = await resolveCodexBinary();
+  if (!codexBinary) return null;
+
   return new Promise((resolve) => {
-    const proc = spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let settled = false;
+    const proc = spawn(codexBinary, ['app-server'], {
+      env: { ...process.env, PATH: codexSubprocessPath() },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let reqId = 0;
     const pending = new Map<number, (msg: Record<string, unknown>) => void>();
 
-    const timer = setTimeout(() => {
+    const finish = (quota: Quota | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       proc.kill();
-      resolve(null);
-    }, 10_000);
+      resolve(quota);
+    };
+
+    const timer = setTimeout(() => finish(null), CODEX_APP_SERVER_TIMEOUT_MS);
 
     proc.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -200,7 +231,8 @@ async function fetchCodexQuota(): Promise<Quota | null> {
       }
     });
 
-    proc.on('error', () => { clearTimeout(timer); resolve(null); });
+    proc.on('error', () => finish(null));
+    proc.on('close', () => finish(null));
 
     function rpc(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
       return new Promise((res, rej) => {
@@ -217,13 +249,11 @@ async function fetchCodexQuota(): Promise<Quota | null> {
       try {
         await rpc('initialize', { clientInfo: { name: 'agent-awareness', version: '1.0.0' } });
         const result = await rpc('account/rateLimits/read');
-        clearTimeout(timer);
-        proc.kill();
 
         const limits = result.rateLimits as Record<string, Record<string, unknown>> | undefined;
-        if (!limits) { resolve(null); return; }
+        if (!limits) { finish(null); return; }
 
-        resolve({
+        finish({
           burst: limits.primary ? {
             utilization: limits.primary.usedPercent as number,
             resetsAt: new Date((limits.primary.resetsAt as number) * 1000).toISOString(),
@@ -234,12 +264,41 @@ async function fetchCodexQuota(): Promise<Quota | null> {
           } : null,
         });
       } catch {
-        clearTimeout(timer);
-        proc.kill();
-        resolve(null);
+        finish(null);
       }
     })();
   });
+}
+
+async function resolveCodexBinary(): Promise<string | null> {
+  const explicit = process.env.AGENT_AWARENESS_CODEX_BINARY?.trim();
+  if (explicit) return explicit;
+
+  for (const dir of codexPathDirs()) {
+    const candidate = join(dir, 'codex');
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Keep scanning PATH.
+    }
+  }
+
+  return null;
+}
+
+function codexSubprocessPath(): string {
+  return codexPathDirs().join(delimiter);
+}
+
+function codexPathDirs(): string[] {
+  return (process.env.PATH ?? '')
+    .split(delimiter)
+    .filter((dir) => dir && !isAgentRelayCodexDir(dir));
+}
+
+function isAgentRelayCodexDir(dir: string): boolean {
+  return dir.replaceAll('\\', '/').includes('/.agent-relay/codex/bin');
 }
 
 function timeUntil(isoString: string): string {
